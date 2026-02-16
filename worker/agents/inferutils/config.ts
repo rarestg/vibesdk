@@ -1,12 +1,4 @@
-import {
-  AgentActionKey,
-  AgentConfig,
-  AgentConstraintConfig,
-  AIModels,
-  AllModels,
-  LiteModels,
-  RegularModels,
-} from './config.types';
+import { AgentActionKey, AgentConfig, AgentConstraintConfig, AIModels, AllModels } from './config.types';
 import { env } from 'cloudflare:workers';
 
 // Common configs - these are good defaults
@@ -16,21 +8,21 @@ const COMMON_AGENT_CONFIGS = {
     reasoning_effort: 'medium' as const,
     max_tokens: 8000,
     temperature: 1,
-    fallbackModel: AIModels.GEMINI_2_5_FLASH,
+    fallbackModel: AIModels.GEMINI_3_FLASH_PREVIEW,
   },
   realtimeCodeFixer: {
     name: AIModels.GROK_4_1_FAST_NON_REASONING,
     reasoning_effort: 'low' as const,
     max_tokens: 32000,
     temperature: 0.2,
-    fallbackModel: AIModels.GEMINI_2_5_FLASH,
+    fallbackModel: AIModels.GEMINI_3_FLASH_PREVIEW,
   },
   fastCodeFixer: {
     name: AIModels.DISABLED,
     reasoning_effort: undefined,
     max_tokens: 64000,
     temperature: 0.0,
-    fallbackModel: AIModels.GEMINI_2_5_PRO,
+    fallbackModel: AIModels.GEMINI_3_FLASH_PREVIEW,
   },
   templateSelection: {
     name: AIModels.GEMINI_2_5_FLASH_LITE,
@@ -44,15 +36,15 @@ const SHARED_IMPLEMENTATION_CONFIG = {
   reasoning_effort: 'low' as const,
   max_tokens: 48000,
   temperature: 1,
-  fallbackModel: AIModels.GEMINI_2_5_PRO,
+  fallbackModel: AIModels.GEMINI_3_FLASH_PREVIEW,
 };
 
 //======================================================================================
 // ATTENTION! Platform config requires specific API keys and Cloudflare AI Gateway setup.
 //======================================================================================
-/* 
-These are the configs used at build.cloudflare.dev 
-You may need to provide API keys for these models in your environment or use 
+/*
+These are the configs used at build.cloudflare.dev
+You may need to provide API keys for these models in your environment or use
 Cloudflare AI Gateway unified billing for seamless model access without managing multiple keys.
 */
 const PLATFORM_AGENT_CONFIG: AgentConfig = {
@@ -61,7 +53,7 @@ const PLATFORM_AGENT_CONFIG: AgentConfig = {
     name: AIModels.GEMINI_3_PRO_PREVIEW,
     reasoning_effort: 'high',
     max_tokens: 20000,
-    fallbackModel: AIModels.GEMINI_2_5_FLASH,
+    fallbackModel: AIModels.GEMINI_3_FLASH_PREVIEW,
     temperature: 1.0,
   },
   projectSetup: {
@@ -69,7 +61,7 @@ const PLATFORM_AGENT_CONFIG: AgentConfig = {
     reasoning_effort: 'medium',
     max_tokens: 8000,
     temperature: 1,
-    fallbackModel: AIModels.GEMINI_2_5_PRO,
+    fallbackModel: AIModels.GEMINI_3_FLASH_PREVIEW,
   },
   phaseGeneration: {
     name: AIModels.GEMINI_3_FLASH_PREVIEW,
@@ -91,14 +83,14 @@ const PLATFORM_AGENT_CONFIG: AgentConfig = {
     reasoning_effort: 'low',
     max_tokens: 4000,
     temperature: 1,
-    fallbackModel: AIModels.GEMINI_2_5_FLASH,
+    fallbackModel: AIModels.GEMINI_3_FLASH_PREVIEW,
   },
   deepDebugger: {
     name: AIModels.GROK_4_1_FAST,
     reasoning_effort: 'high',
     max_tokens: 8000,
     temperature: 1,
-    fallbackModel: AIModels.GEMINI_2_5_PRO,
+    fallbackModel: AIModels.GEMINI_3_FLASH_PREVIEW,
   },
   fileRegeneration: {
     name: AIModels.GROK_4_1_FAST_NON_REASONING,
@@ -112,7 +104,7 @@ const PLATFORM_AGENT_CONFIG: AgentConfig = {
     reasoning_effort: 'medium',
     max_tokens: 8000,
     temperature: 1,
-    fallbackModel: AIModels.GEMINI_2_5_PRO,
+    fallbackModel: AIModels.GEMINI_3_FLASH_PREVIEW,
   },
 };
 
@@ -123,61 +115,73 @@ const PLATFORM_AGENT_CONFIG: AgentConfig = {
 const DEFAULT_AGENT_CONFIG: AgentConfig = {
   ...COMMON_AGENT_CONFIGS,
   templateSelection: {
-    name: AIModels.GEMINI_2_5_FLASH_LITE,
+    name: AIModels.GEMINI_3_PRO_PREVIEW,
     max_tokens: 2000,
-    fallbackModel: AIModels.GEMINI_2_5_FLASH,
-    temperature: 0.6,
+    fallbackModel: AIModels.GEMINI_3_FLASH_PREVIEW,
+    temperature: 1,
   },
   blueprint: {
-    name: AIModels.GEMINI_3_FLASH_PREVIEW,
+    name: AIModels.GEMINI_3_PRO_PREVIEW,
     reasoning_effort: 'high',
     max_tokens: 64000,
-    fallbackModel: AIModels.GEMINI_2_5_PRO,
+    fallbackModel: AIModels.GEMINI_3_FLASH_PREVIEW,
     temperature: 1,
   },
   projectSetup: {
-    name: AIModels.GEMINI_3_FLASH_PREVIEW,
-    ...SHARED_IMPLEMENTATION_CONFIG,
+    name: AIModels.GEMINI_3_PRO_PREVIEW,
+    reasoning_effort: 'high',
+    max_tokens: 48000,
+    temperature: 1,
+    fallbackModel: AIModels.GEMINI_3_FLASH_PREVIEW,
   },
   phaseGeneration: {
-    name: AIModels.GEMINI_3_FLASH_PREVIEW,
-    ...SHARED_IMPLEMENTATION_CONFIG,
+    name: AIModels.GEMINI_3_PRO_PREVIEW,
+    reasoning_effort: 'high',
+    max_tokens: 48000,
+    temperature: 1,
+    fallbackModel: AIModels.GEMINI_3_FLASH_PREVIEW,
   },
   firstPhaseImplementation: {
-    name: AIModels.GEMINI_3_FLASH_PREVIEW,
-    ...SHARED_IMPLEMENTATION_CONFIG,
+    name: AIModels.GEMINI_3_PRO_PREVIEW,
+    reasoning_effort: 'high',
+    max_tokens: 48000,
+    temperature: 1,
+    fallbackModel: AIModels.GEMINI_3_FLASH_PREVIEW,
   },
   phaseImplementation: {
-    name: AIModels.GEMINI_3_FLASH_PREVIEW,
-    ...SHARED_IMPLEMENTATION_CONFIG,
+    name: AIModels.GEMINI_3_PRO_PREVIEW,
+    reasoning_effort: 'high',
+    max_tokens: 48000,
+    temperature: 1,
+    fallbackModel: AIModels.GEMINI_3_FLASH_PREVIEW,
   },
   conversationalResponse: {
-    name: AIModels.GEMINI_2_5_FLASH,
-    reasoning_effort: 'low',
-    max_tokens: 4000,
-    temperature: 0,
-    fallbackModel: AIModels.GEMINI_2_5_PRO,
+    name: AIModels.GEMINI_3_PRO_PREVIEW,
+    reasoning_effort: 'high',
+    max_tokens: 8000,
+    temperature: 1,
+    fallbackModel: AIModels.GEMINI_3_FLASH_PREVIEW,
   },
   deepDebugger: {
-    name: AIModels.GEMINI_3_FLASH_PREVIEW,
+    name: AIModels.GEMINI_3_PRO_PREVIEW,
     reasoning_effort: 'high',
-    max_tokens: 8000,
+    max_tokens: 16000,
     temperature: 1,
-    fallbackModel: AIModels.GEMINI_2_5_FLASH,
+    fallbackModel: AIModels.GEMINI_3_FLASH_PREVIEW,
   },
   fileRegeneration: {
-    name: AIModels.GEMINI_3_FLASH_PREVIEW,
-    reasoning_effort: 'low',
+    name: AIModels.GEMINI_3_PRO_PREVIEW,
+    reasoning_effort: 'high',
     max_tokens: 32000,
     temperature: 1,
-    fallbackModel: AIModels.GEMINI_2_5_FLASH,
+    fallbackModel: AIModels.GEMINI_3_FLASH_PREVIEW,
   },
   agenticProjectBuilder: {
-    name: AIModels.GEMINI_3_FLASH_PREVIEW,
+    name: AIModels.GEMINI_3_PRO_PREVIEW,
     reasoning_effort: 'high',
-    max_tokens: 8000,
+    max_tokens: 16000,
     temperature: 1,
-    fallbackModel: AIModels.GEMINI_2_5_FLASH,
+    fallbackModel: AIModels.GEMINI_3_FLASH_PREVIEW,
   },
 };
 
@@ -215,21 +219,21 @@ export const AGENT_CONSTRAINTS: Map<AgentActionKey, AgentConstraintConfig> = new
   [
     'projectSetup',
     {
-      allowedModels: new Set([...RegularModels, AIModels.GEMINI_2_5_PRO]),
+      allowedModels: new Set(AllModels),
       enabled: true,
     },
   ],
   [
     'conversationalResponse',
     {
-      allowedModels: new Set(RegularModels),
+      allowedModels: new Set(AllModels),
       enabled: true,
     },
   ],
   [
     'templateSelection',
     {
-      allowedModels: new Set(LiteModels),
+      allowedModels: new Set(AllModels),
       enabled: true,
     },
   ],
