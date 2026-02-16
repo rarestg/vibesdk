@@ -172,13 +172,22 @@ Setting `DOCKER_HOST` short-circuits the entire resolution chain, bypassing both
 
 ## Fix Applied
 
-Added `WRANGLER_DOCKER_HOST` env var to the dev script in `package.json`:
+The primary fix was to force wrangler/vite-plugin to use `WRANGLER_DOCKER_HOST` (not `DOCKER_HOST`) so Docker socket resolution bypasses the broken auto-detection path.
+
+Current implementation in `package.json`:
 
 ```json
-"dev": "DEV_MODE=true WRANGLER_DOCKER_HOST=unix:///Users/rares/.docker/run/docker.sock vite",
+"dev": "tsx scripts/dev.ts",
 ```
 
-The `wrangler.jsonc` `container_engine` config was reverted since the Vite plugin ignores it.
+`scripts/dev.ts` now:
+
+- sets `DEV_MODE=true`
+- preserves any existing `WRANGLER_DOCKER_HOST`
+- auto-detects a local socket path (`~/.docker/run/docker.sock` or `/var/run/docker.sock`) when the env var is unset
+- starts Vite with that scoped env var
+
+This keeps the fix while removing machine-specific hardcoded paths from `package.json`. The `wrangler.jsonc` `container_engine` config remains reverted because the Vite plugin ignores it.
 
 ### Why `WRANGLER_DOCKER_HOST` and Not `DOCKER_HOST`
 
@@ -195,7 +204,7 @@ ERROR: failed to solve: docker.io/cloudflare/sandbox:0.5.6: failed to do request
 
 | Fix | Method | Pros | Cons |
 |-----|--------|------|------|
-| `WRANGLER_DOCKER_HOST` in dev script (applied) | `WRANGLER_DOCKER_HOST=unix:///... vite` | Persistent, scoped to wrangler only | Machine-specific path in package.json |
+| `WRANGLER_DOCKER_HOST` via dev launcher (applied) | `tsx scripts/dev.ts` auto-detects socket and sets `WRANGLER_DOCKER_HOST` | Persistent, scoped to wrangler only, portable across local setups | Requires keeping `scripts/dev.ts` in sync |
 | `WRANGLER_DOCKER_HOST` env var (shell) | `export WRANGLER_DOCKER_HOST="unix:///..."` | No file changes | Must be set in every shell session |
 | `DOCKER_HOST` env var | `export DOCKER_HOST="unix:///..."` | No file changes | **Breaks `docker build`** -- changes Docker context for all commands |
 | `wrangler.jsonc` config | `"container_engine": "unix:///..."` | Self-documenting config | **Does not work** -- Vite plugin overwrites it |
