@@ -22,9 +22,14 @@ import { validateAndCleanBootstrapCommands } from 'worker/agents/utils/common';
 import { DeploymentTarget } from '../../core/types';
 import { BaseProjectState } from '../../core/state';
 
-const PER_ATTEMPT_TIMEOUT_MS = 60000; // 60 seconds per individual attempt
+// Sandbox SDK internal retry window is 120s; per-attempt timeout must exceed it
+const PER_ATTEMPT_TIMEOUT_MS = 150000; // 150 seconds (sandbox 120s + 30s margin)
 const MASTER_DEPLOYMENT_TIMEOUT_MS = 300000; // 5 minutes total
 const HEALTH_CHECK_INTERVAL_MS = 30000;
+
+// Circuit breaker: stop hammering sandbox after repeated startup failures
+const CIRCUIT_BREAKER_THRESHOLD = 5; // consecutive failures before cooldown
+const CIRCUIT_BREAKER_COOLDOWN_MS = 60000; // 60 second cooldown
 
 /**
  * Manages deployment operations for sandbox instances
@@ -35,6 +40,14 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
   private healthCheckInterval: ReturnType<typeof setInterval> | null = null;
   private currentDeploymentPromise: Promise<PreviewType | null> | null = null;
   private cachedSandboxClient: BaseSandboxService | null = null;
+
+  // Deployment generation token: incremented on each new deployment loop.
+  // Stale loops compare their captured generation to detect supersession.
+  private deploymentGeneration = 0;
+
+  // Circuit breaker state for repeated startup failures
+  private consecutiveStartupFailures = 0;
+  private circuitBreakerCooldownUntil = 0;
 
   constructor(
     options: ServiceOptions<BaseProjectState>,
@@ -188,6 +201,12 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
 
     this.healthCheckInterval = setInterval(async () => {
       try {
+        // Skip health-check-triggered redeploy when a deployment loop is already in progress
+        if (this.currentDeploymentPromise) {
+          logger.info('Skipping health check redeploy: deployment already in progress');
+          return;
+        }
+
         const client = this.getClient();
         const status = await client.getInstanceStatus(instanceId);
 
@@ -313,11 +332,15 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
       ).catch(() => null); // Convert timeout to null like first caller
     }
 
+    // Increment generation to invalidate any stale retry loops
+    this.deploymentGeneration++;
+
     logger.info('Deploying to sandbox', {
       files: files.length,
       redeploy,
       commitMessage,
       sessionId: this.getSessionId(),
+      generation: this.deploymentGeneration,
     });
 
     // Create deployment promise
@@ -349,9 +372,10 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
   }
 
   /**
-   * Execute deployment with infinite retry until success
-   * Each attempt has its own timeout
-   * Resets sessionId after consecutive failures
+   * Execute deployment with retry until success.
+   * Each attempt has its own timeout. Resets sessionId after consecutive failures.
+   * Uses generation tokens to detect and exit stale loops, and a circuit breaker
+   * to avoid hammering sandbox during unhealthy periods.
    */
   private async executeDeploymentWithRetry(
     files: FileOutputType[],
@@ -363,20 +387,43 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
     const logger = this.getLog();
     let attempt = 0;
     const maxAttemptsBeforeSessionReset = 3;
+    const myGeneration = this.deploymentGeneration;
 
     while (true) {
+      // Check if this loop has been superseded by a newer deployment
+      if (this.deploymentGeneration !== myGeneration) {
+        logger.info('Stale deployment loop detected, exiting', {
+          myGeneration,
+          currentGeneration: this.deploymentGeneration,
+        });
+        throw new Error('Deployment loop superseded by newer deployment');
+      }
+
+      // Circuit breaker: wait out cooldown if too many consecutive startup failures
+      if (Date.now() < this.circuitBreakerCooldownUntil) {
+        const remainingMs = this.circuitBreakerCooldownUntil - Date.now();
+        logger.warn('Circuit breaker active: sandbox runtime unhealthy, waiting for cooldown', {
+          remainingMs,
+          consecutiveFailures: this.consecutiveStartupFailures,
+        });
+        await new Promise((resolve) => setTimeout(resolve, remainingMs));
+      }
+
       attempt++;
+      let deployPromise: Promise<DeploymentResult> | null = null;
+      let attemptTimedOut = false;
+      let sessionResetForAttempt = false;
+
       logger.info(`Deployment attempt ${attempt}`, { sessionId: this.getSessionId() });
 
       try {
-        // Callback: deployment starting (only on first attempt)
         callbacks?.onStarted?.({
           message: 'Deploying code to sandbox service',
           files: files.map((f) => ({ filePath: f.filePath })),
         });
 
         // Core deployment with per-attempt timeout
-        const deployPromise = this.deploy({
+        deployPromise = this.deploy({
           files,
           redeploy,
           commitMessage,
@@ -387,13 +434,22 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
           deployPromise,
           PER_ATTEMPT_TIMEOUT_MS,
           `Deployment attempt ${attempt} timed out`,
-          // No onTimeout callback - don't break anything
+          () => {
+            attemptTimedOut = true;
+            logger.warn(`Deployment attempt ${attempt} exceeded timeout; resetting sessionId to isolate retry`);
+            if (!sessionResetForAttempt) {
+              this.resetSessionId();
+              sessionResetForAttempt = true;
+            }
+          },
         );
 
-        // Success! Start health check and return
+        // Success - reset circuit breaker
+        this.consecutiveStartupFailures = 0;
+
+        // Start health check and return
         if (result.redeployed || this.healthCheckInterval === null) {
           this.startHealthCheckInterval(result.sandboxInstanceId);
-          // Execute setup commands with callback
           await this.executeSetupCommands(result.sandboxInstanceId, undefined, callbacks?.onAfterSetupCommands);
         }
 
@@ -417,20 +473,58 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
 
         const errorMsg = error instanceof Error ? error.message : String(error);
 
-        // Handle specific errors that require session reset
+        // Log late completion of timed-out attempts for diagnostics
+        if (attemptTimedOut && deployPromise) {
+          void deployPromise
+            .then((lateResult) => {
+              logger.warn('Timed-out deployment attempt completed after timeout and was ignored', {
+                attempt,
+                staleInstanceId: lateResult.sandboxInstanceId,
+                stalePreviewURL: lateResult.previewURL,
+              });
+            })
+            .catch((lateError) => {
+              logger.warn('Timed-out deployment attempt failed after timeout', {
+                attempt,
+                error: lateError instanceof Error ? lateError.message : String(lateError),
+              });
+            });
+        }
+
+        // Track startup failures for circuit breaker
+        if (
+          errorMsg.includes('exit code: 137') ||
+          errorMsg.includes('status: 500') ||
+          errorMsg.includes('Container startup failed')
+        ) {
+          this.consecutiveStartupFailures++;
+          if (this.consecutiveStartupFailures >= CIRCUIT_BREAKER_THRESHOLD) {
+            this.circuitBreakerCooldownUntil = Date.now() + CIRCUIT_BREAKER_COOLDOWN_MS;
+            logger.warn('Circuit breaker tripped: too many consecutive startup failures', {
+              failures: this.consecutiveStartupFailures,
+              cooldownMs: CIRCUIT_BREAKER_COOLDOWN_MS,
+            });
+          }
+        }
+
+        // Handle specific errors that require session reset (guarded per-attempt)
         if (
           errorMsg.includes('Network connection lost') ||
           errorMsg.includes('Container service disconnected') ||
           errorMsg.includes('Internal error in Durable Object storage')
         ) {
-          logger.warn('Session-level error detected, resetting sessionId');
-          this.resetSessionId();
+          if (!sessionResetForAttempt) {
+            logger.warn('Session-level error detected, resetting sessionId');
+            this.resetSessionId();
+            sessionResetForAttempt = true;
+          }
         }
 
         // After consecutive failures, reset session to get fresh sandbox
-        if (attempt % maxAttemptsBeforeSessionReset === 0) {
+        if (!sessionResetForAttempt && attempt % maxAttemptsBeforeSessionReset === 0) {
           logger.warn(`${attempt} consecutive failures, resetting sessionId for fresh sandbox`);
           this.resetSessionId();
+          sessionResetForAttempt = true;
         }
 
         // Clear instance ID from state
@@ -447,8 +541,6 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
         const backoffMs = Math.min(1000 * Math.pow(2, Math.min(attempt - 1, 5)), 30000);
         logger.info(`Retrying deployment in ${backoffMs}ms...`);
         await new Promise((resolve) => setTimeout(resolve, backoffMs));
-
-        // Loop continues - retry indefinitely until master timeout
       }
     }
   }
