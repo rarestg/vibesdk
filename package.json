@@ -6,7 +6,7 @@
   "scripts": {
     "setup": "tsx scripts/setup.ts",
     "prepare": "husky",
-    "dev": "DEV_MODE=true vite",
+    "dev": "DEV_MODE=true WRANGLER_DOCKER_HOST=unix:///Users/rares/.docker/run/docker.sock vite",
     "build": "tsc -b --incremental && vite build",
     "typecheck": "tsc -b --incremental --noEmit",
     "lint": "eslint .",
