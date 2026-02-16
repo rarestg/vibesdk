@@ -7,6 +7,7 @@ import {
 } from '../interfaces/IDeploymentManager';
 import {
   BootstrapResponse,
+  BootstrapStatusResponse,
   StaticAnalysisResponse,
   RuntimeError,
   PreviewType,
@@ -27,6 +28,8 @@ import { AppError, AppErrorType } from '../../../utils/ErrorHandling';
 const PER_ATTEMPT_TIMEOUT_MS = 150000; // 150 seconds (sandbox 120s + 30s margin)
 const MASTER_DEPLOYMENT_TIMEOUT_MS = 300000; // 5 minutes total
 const HEALTH_CHECK_INTERVAL_MS = 30000;
+const PREVIEW_URL_WAIT_TIMEOUT_MS = 30000;
+const PREVIEW_URL_POLL_INTERVAL_MS = 1000;
 
 // Circuit breaker: stop hammering sandbox after repeated startup failures
 const CIRCUIT_BREAKER_THRESHOLD = 5; // consecutive failures before cooldown
@@ -213,16 +216,7 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
         const status = await client.getInstanceStatus(instanceId);
 
         if (!status.success) {
-          logger.warn(`Instance ${instanceId} unhealthy, triggering redeploy`);
-          this.clearHealthCheckInterval();
-
-          // Trigger redeploy to recover from unhealthy state
-          try {
-            await this.deployToSandbox();
-            logger.info('Instance redeployed successfully after health check failure');
-          } catch (redeployError) {
-            logger.error('Failed to redeploy after health check failure:', redeployError);
-          }
+          await this.redeployFromHealthCheck(instanceId);
           return;
         }
 
@@ -232,21 +226,25 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
         }
 
         if (!status.isHealthy) {
-          logger.warn(`Instance ${instanceId} unhealthy, triggering redeploy`);
-          this.clearHealthCheckInterval();
-
-          // Trigger redeploy to recover from unhealthy state
-          try {
-            await this.deployToSandbox();
-            logger.info('Instance redeployed successfully after health check failure');
-          } catch (redeployError) {
-            logger.error('Failed to redeploy after health check failure:', redeployError);
-          }
+          await this.redeployFromHealthCheck(instanceId);
         }
       } catch (error) {
         logger.error('Health check failed:', error);
       }
     }, HEALTH_CHECK_INTERVAL_MS);
+  }
+
+  private async redeployFromHealthCheck(instanceId: string): Promise<void> {
+    const logger = this.getLog();
+    logger.warn(`Instance ${instanceId} unhealthy, triggering redeploy`);
+    this.clearHealthCheckInterval();
+
+    try {
+      await this.deployToSandbox();
+      logger.info('Instance redeployed successfully after health check failure');
+    } catch (redeployError) {
+      logger.error('Failed to redeploy after health check failure:', redeployError);
+    }
   }
 
   private clearHealthCheckInterval(): void {
@@ -703,13 +701,28 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
     if (sandboxInstanceId) {
       const status = await client.getInstanceStatus(sandboxInstanceId);
       if (status.success && (status.isHealthy || status.pending)) {
-        logger.info(`DEPLOYMENT CHECK PASSED: Instance ${sandboxInstanceId} is running`);
-        return {
-          sandboxInstanceId,
-          previewURL: status.previewURL,
-          tunnelURL: status.tunnelURL,
-          redeployed: false,
-        };
+        let previewURL = status.previewURL;
+        let tunnelURL = status.tunnelURL;
+
+        if (!previewURL && status.pending) {
+          const resolvedStatus = await this.waitForInstancePreview(sandboxInstanceId);
+          if (resolvedStatus?.previewURL) {
+            previewURL = resolvedStatus.previewURL;
+            tunnelURL = resolvedStatus.tunnelURL;
+          }
+        }
+
+        if (previewURL) {
+          logger.info(`DEPLOYMENT CHECK PASSED: Instance ${sandboxInstanceId} is running`);
+          return {
+            sandboxInstanceId,
+            previewURL,
+            tunnelURL,
+            redeployed: false,
+          };
+        }
+
+        logger.warn(`DEPLOYMENT CHECK INCOMPLETE: Instance ${sandboxInstanceId} has no preview URL, recreating`);
       }
       logger.error(`DEPLOYMENT CHECK FAILED: Failed to get status for instance ${sandboxInstanceId}, redeploying...`);
     }
@@ -783,7 +796,49 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
       return createResponse;
     }
 
-    throw new Error(`Failed to create sandbox instance: ${createResponse?.error || 'Unknown error'}`);
+    const resolvedStatus = await this.waitForInstancePreview(createResponse.runId);
+    if (resolvedStatus?.previewURL) {
+      return {
+        ...createResponse,
+        previewURL: resolvedStatus.previewURL,
+        tunnelURL: resolvedStatus.tunnelURL,
+        processId: resolvedStatus.processId,
+        message: resolvedStatus.message ?? createResponse.message,
+      };
+    }
+
+    throw new Error(`Failed to create sandbox instance: preview URL not available for ${createResponse.runId}`);
+  }
+
+  private async waitForInstancePreview(instanceId: string): Promise<BootstrapStatusResponse | null> {
+    const logger = this.getLog();
+    const client = this.getClient();
+    const deadline = Date.now() + PREVIEW_URL_WAIT_TIMEOUT_MS;
+
+    while (Date.now() < deadline) {
+      const status = await client.getInstanceStatus(instanceId);
+      if (!status.success) {
+        logger.warn('Failed to get instance status while waiting for preview URL', {
+          instanceId,
+          error: status.error,
+        });
+        return null;
+      }
+
+      if (status.previewURL) {
+        return status;
+      }
+
+      if (!status.pending && !status.isHealthy) {
+        logger.warn('Instance became unhealthy while waiting for preview URL', { instanceId });
+        return status;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, PREVIEW_URL_POLL_INTERVAL_MS));
+    }
+
+    logger.warn('Timed out waiting for preview URL', { instanceId, timeoutMs: PREVIEW_URL_WAIT_TIMEOUT_MS });
+    return null;
   }
 
   /**

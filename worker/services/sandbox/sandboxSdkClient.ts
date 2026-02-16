@@ -1280,20 +1280,29 @@ export class SandboxSdkClient extends BaseSandboxService {
         }
 
         // Primary app process health
+        let appProcessHealthy = true;
         if (metadata.processId) {
           const appProcess = processes.find((p) => p.id === metadata.processId);
-          isHealthy = !!(appProcess && appProcess.status === 'running');
+          appProcessHealthy = !!(appProcess && appProcess.status === 'running');
         }
+        isHealthy = appProcessHealthy;
 
         // Tunnel process health in local/tunnel mode
         const shouldUseTunnel = isDev(env) || isEnabledEnvFlag(env.USE_TUNNEL_FOR_PREVIEW);
-        if (shouldUseTunnel) {
+        if (shouldUseTunnel && appProcessHealthy) {
           const hasTunnelUrl = typeof metadata.tunnelURL === 'string' && metadata.tunnelURL.trim() !== '';
           const tunnelProcess =
             metadata.tunnelProcessId && processes.find((p) => p.id === metadata.tunnelProcessId && p.status === 'running');
+          const tunnelProcessRunning = !!tunnelProcess;
 
-          let tunnelHealthy = !!tunnelProcess && hasTunnelUrl;
-          if (!tunnelHealthy) {
+          let tunnelHealthy = tunnelProcessRunning && hasTunnelUrl;
+          if (!tunnelHealthy && tunnelProcessRunning && !hasTunnelUrl) {
+            pending = true;
+            this.logger.info('Tunnel process running without URL; waiting for async URL detection', {
+              instanceId,
+              tunnelProcessId: metadata.tunnelProcessId,
+            });
+          } else if (!tunnelHealthy) {
             this.logger.warn('Tunnel process missing or unhealthy, attempting restart', {
               instanceId,
               tunnelProcessId: metadata.tunnelProcessId,
@@ -1325,16 +1334,46 @@ export class SandboxSdkClient extends BaseSandboxService {
                     });
                   },
                 });
-                metadata = {
-                  ...metadata,
-                  // Prevent reporting stale tunnel URLs while the new tunnel URL is still resolving.
-                  previewURL: metadata.previewURL === previousTunnelUrl ? '' : metadata.previewURL,
-                  tunnelURL: '',
+
+                const latestMetadata = (await this.getInstanceMetadata(instanceId)) ?? metadata;
+                const latestTunnelUrl = latestMetadata.tunnelURL?.trim();
+                const hasFreshTunnelUrl = !!latestTunnelUrl && latestTunnelUrl !== previousTunnelUrl;
+
+                let updatedMetadata: InstanceMetadata = {
+                  ...latestMetadata,
                   tunnelProcessId: restartedTunnel.processId,
                 };
-                await this.storeInstanceMetadata(instanceId, metadata);
-                pending = true;
-                tunnelHealthy = false;
+
+                if (!hasFreshTunnelUrl) {
+                  // Prevent reporting stale tunnel URLs while the new tunnel URL is still resolving.
+                  updatedMetadata = {
+                    ...updatedMetadata,
+                    previewURL: updatedMetadata.previewURL === previousTunnelUrl ? '' : updatedMetadata.previewURL,
+                    tunnelURL: '',
+                  };
+                }
+
+                // Re-read before store to avoid racing against onUrlDetected updates.
+                const latestBeforeStore = (await this.getInstanceMetadata(instanceId)) ?? updatedMetadata;
+                const latestReadyTunnelUrl = latestBeforeStore.tunnelURL?.trim();
+                if (
+                  latestBeforeStore.tunnelProcessId === restartedTunnel.processId &&
+                  !!latestReadyTunnelUrl &&
+                  latestReadyTunnelUrl !== previousTunnelUrl
+                ) {
+                  updatedMetadata = {
+                    ...updatedMetadata,
+                    previewURL: latestBeforeStore.previewURL,
+                    tunnelURL: latestBeforeStore.tunnelURL,
+                  };
+                }
+
+                await this.storeInstanceMetadata(instanceId, updatedMetadata);
+                metadata = updatedMetadata;
+
+                const restartHasReadyUrl = !!metadata.tunnelURL?.trim();
+                pending = !restartHasReadyUrl;
+                tunnelHealthy = restartHasReadyUrl;
               } catch (restartError) {
                 this.logger.error('Failed to restart tunnel process', restartError, { instanceId });
                 tunnelHealthy = false;
