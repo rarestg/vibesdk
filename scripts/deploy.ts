@@ -99,6 +99,8 @@ class CloudflareDeploymentManager {
   private cloudflare: Cloudflare;
   private aiGatewayCloudflare?: Cloudflare; // Separate SDK instance for AI Gateway operations
   private conflictingVarsForCleanup: Record<string, string> | null = null; // For signal cleanup
+  private originalDockerfileContentForCleanup: string | null = null; // For signal cleanup
+  private isSignalCleanupInProgress = false;
 
   constructor() {
     this.validateEnvironment();
@@ -119,19 +121,43 @@ class CloudflareDeploymentManager {
    */
   private setupSignalHandlers(): void {
     const gracefulExit = async (signal: string) => {
+      if (this.isSignalCleanupInProgress) {
+        console.log(`\n🛑 Received ${signal} while cleanup is already in progress...`);
+        return;
+      }
+
+      this.isSignalCleanupInProgress = true;
       console.log(`\n🛑 Received ${signal}, performing cleanup...`);
 
-      try {
-        // Restore conflicting vars using existing restoration method
+      const runCleanupStep = async (stepName: string, step: () => Promise<void> | void): Promise<void> => {
+        try {
+          await step();
+        } catch (error) {
+          console.error(
+            `❌ Cleanup step failed (${stepName}): ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      };
+
+      await runCleanupStep('wrangler config restoration', async () => {
         if (this.conflictingVarsForCleanup) {
           console.log('🔄 Restoring original wrangler.jsonc configuration...');
           await this.restoreOriginalVars(this.conflictingVarsForCleanup);
+          this.conflictingVarsForCleanup = null;
         } else {
           console.log('ℹ️  No configuration changes to restore');
         }
-      } catch (error) {
-        console.error(`❌ Error during cleanup: ${error instanceof Error ? error.message : String(error)}`);
-      }
+      });
+
+      await runCleanupStep('dockerfile local platform restoration', () => {
+        if (this.originalDockerfileContentForCleanup) {
+          console.log('🔄 Restoring local Dockerfile platform flags...');
+          this.restoreDockerfileLocalFlags(this.originalDockerfileContentForCleanup);
+          this.originalDockerfileContentForCleanup = null;
+        } else {
+          console.log('ℹ️  No local Dockerfile changes to restore');
+        }
+      });
 
       console.log('👋 Cleanup completed. Exiting...');
       process.exit(1);
@@ -605,14 +631,15 @@ class CloudflareDeploymentManager {
   }
 
   /**
-   * Cleans ARM64 platform flags from SandboxDockerfile for production deployment
-   * Returns the original content if ARM64 flags were removed (for restoration)
+   * Cleans local platform flags from SandboxDockerfile for production deployment.
+   * Strips both --platform=linux/arm64 and --platform=linux/amd64 overrides.
+   * Returns the original content if flags were removed (for restoration).
    */
   private cleanDockerfileForDeployment(): string | null {
     const dockerfilePath = join(PROJECT_ROOT, 'SandboxDockerfile');
 
     if (!existsSync(dockerfilePath)) {
-      console.log('     ℹ️  SandboxDockerfile not found - skipping ARM64 cleanup');
+      console.log('     ℹ️  SandboxDockerfile not found - skipping platform cleanup');
       return null;
     }
 
@@ -623,8 +650,8 @@ class CloudflareDeploymentManager {
       // Split content into lines for processing
       const lines = originalContent.split('\n');
       const cleanedLines = lines.map((line) => {
-        // Look for FROM statements with --platform=linux/arm64 and remove the flag
-        const fromMatch = line.match(/^(\s*FROM\s+)--platform=linux\/arm64\s+(.*)/);
+        // Remove any local platform override (arm64 or amd64) from FROM statements
+        const fromMatch = line.match(/^(\s*FROM\s+)--platform=linux\/(?:arm64|amd64)\s+(.*)/);
         if (fromMatch) {
           modified = true;
           const [, prefix, image] = fromMatch;
@@ -635,10 +662,10 @@ class CloudflareDeploymentManager {
 
       if (modified) {
         writeFileSync(dockerfilePath, cleanedLines.join('\n'), 'utf-8');
-        console.log('     ✅ Removed ARM64 platform flags from SandboxDockerfile');
+        console.log('     ✅ Removed local platform flags from SandboxDockerfile');
         return originalContent; // Return original for restoration
       } else {
-        console.log('     ✅ No ARM64 platform flags found in SandboxDockerfile');
+        console.log('     ✅ No local platform flags found in SandboxDockerfile');
         return null; // Nothing to restore
       }
     } catch (error) {
@@ -651,19 +678,19 @@ class CloudflareDeploymentManager {
   }
 
   /**
-   * Restores ARM64 platform flags to SandboxDockerfile if they were previously removed
+   * Restores local platform flags to SandboxDockerfile if they were previously removed
    */
-  private restoreDockerfileARM64Flags(originalContent: string): void {
+  private restoreDockerfileLocalFlags(originalContent: string): void {
     const dockerfilePath = join(PROJECT_ROOT, 'SandboxDockerfile');
 
     try {
       writeFileSync(dockerfilePath, originalContent, 'utf-8');
-      console.log('🔄 Restored ARM64 platform flags to SandboxDockerfile for local development');
+      console.log('🔄 Restored local platform flags to SandboxDockerfile for local development');
     } catch (error) {
       console.warn(
-        `⚠️  Could not restore ARM64 flags to SandboxDockerfile: ${error instanceof Error ? error.message : String(error)}`,
+        `⚠️  Could not restore platform flags to SandboxDockerfile: ${error instanceof Error ? error.message : String(error)}`,
       );
-      console.warn('   You may need to manually re-run the setup script to restore ARM64 flags');
+      console.warn('   You may need to manually re-run the setup script to restore platform flags');
     }
   }
 
@@ -1770,14 +1797,16 @@ class CloudflareDeploymentManager {
     const startTime = Date.now();
     let customDomain: string | null = null;
     let originalDockerfileContent: string | null = null;
+    this.originalDockerfileContentForCleanup = null;
 
     try {
       // Step 1: Early Configuration Updates (must happen before any wrangler commands)
       this.cleanWranglerCache();
       console.log('\n📋 Step 1: Updating configuration files...');
 
-      console.log('   🔧 Cleaning ARM64 development flags from Dockerfile');
+      console.log('   🔧 Cleaning local platform flags from Dockerfile');
       originalDockerfileContent = this.cleanDockerfileForDeployment();
+      this.originalDockerfileContentForCleanup = originalDockerfileContent;
 
       console.log('   🔧 Updating package.json database commands');
       this.updatePackageJsonDatabaseCommands();
@@ -1872,12 +1901,6 @@ class CloudflareDeploymentManager {
         const duration = Math.round((Date.now() - startTime) / 1000);
         console.log(`\n🎉 Complete deployment finished successfully in ${duration}s!`);
         console.log(`✅ Your Cloudflare Orange Build platform is now live at https://${customDomain}! 🚀`);
-
-        // Restore ARM64 flags for continued local development
-        if (originalDockerfileContent) {
-          console.log('\n🔄 Restoring local development configuration...');
-          this.restoreDockerfileARM64Flags(originalDockerfileContent);
-        }
       } else {
         throw new DeploymentError('Deployment failed during wrangler deploy or secret update');
       }
@@ -1900,13 +1923,16 @@ class CloudflareDeploymentManager {
       console.error('   - Verify the templates repository is accessible');
       console.error('   - Check that bun is installed and build script works');
 
-      process.exit(1);
+      // Do not call process.exit() here; allow finally block to restore local Dockerfile flags first.
+      process.exitCode = 1;
+      return;
     } finally {
-      // Always restore ARM64 flags if they were removed, even on deployment failure
+      // Always restore local platform flags if they were removed, even on deployment failure
       if (originalDockerfileContent) {
         console.log('\n🔄 Restoring local development configuration...');
-        this.restoreDockerfileARM64Flags(originalDockerfileContent);
+        this.restoreDockerfileLocalFlags(originalDockerfileContent);
       }
+      this.originalDockerfileContentForCleanup = null;
     }
   }
 }
