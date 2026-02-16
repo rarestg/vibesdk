@@ -1873,12 +1873,6 @@ class CloudflareDeploymentManager {
         const duration = Math.round((Date.now() - startTime) / 1000);
         console.log(`\n🎉 Complete deployment finished successfully in ${duration}s!`);
         console.log(`✅ Your Cloudflare Orange Build platform is now live at https://${customDomain}! 🚀`);
-
-        // Restore local platform flags for continued local development
-        if (originalDockerfileContent) {
-          console.log('\n🔄 Restoring local development configuration...');
-          this.restoreDockerfileLocalFlags(originalDockerfileContent);
-        }
       } else {
         throw new DeploymentError('Deployment failed during wrangler deploy or secret update');
       }
@@ -1901,7 +1895,9 @@ class CloudflareDeploymentManager {
       console.error('   - Verify the templates repository is accessible');
       console.error('   - Check that bun is installed and build script works');
 
-      process.exit(1);
+      // Do not call process.exit() here; allow finally block to restore local Dockerfile flags first.
+      process.exitCode = 1;
+      return;
     } finally {
       // Always restore local platform flags if they were removed, even on deployment failure
       if (originalDockerfileContent) {

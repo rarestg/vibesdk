@@ -1874,9 +1874,9 @@ class SetupManager {
       Object.keys(this.config.devVars).includes(key),
     );
     const hasRemoteR2 = resources.r2Buckets.some((bucket) => bucket.accessible);
-    const isARM64 = process.arch === 'arm64';
+    const isAppleSilicon = process.arch === 'arm64' && process.platform === 'darwin';
 
-    if (!hasGoogleAI || hasOAuth || !hasRemoteR2 || isARM64) {
+    if (!hasGoogleAI || hasOAuth || !hasRemoteR2 || isAppleSilicon) {
       console.log('\n💡 Setup Information:');
 
       if (!hasGoogleAI) {
@@ -1899,7 +1899,7 @@ class SetupManager {
         console.log('   • Ready for both local development and production');
       }
 
-      if (isARM64) {
+      if (isAppleSilicon) {
         console.log('   • SandboxDockerfile patched for Apple Silicon local development');
         console.log('   • Uses --platform=linux/amd64 for sandbox base image compatibility');
         console.log('   • Local platform flags will be automatically removed during deployment');
@@ -1980,21 +1980,26 @@ class SetupManager {
     // Check if we're running on ARM64 architecture
     const arch = process.arch;
     const platform = process.platform;
+    const isAppleSilicon = arch === 'arm64' && platform === 'darwin';
     const localPlatformOverride = 'linux/amd64';
 
-    if (arch !== 'arm64') {
+    if (!isAppleSilicon) {
+      if (arch === 'arm64') {
+        console.log('ℹ️  ARM64 non-macOS platform detected - skipping Apple Silicon Dockerfile patching');
+        return;
+      }
       console.log('ℹ️  Non-ARM64 platform detected - no Dockerfile patching needed');
       return;
     }
 
-    console.log('\n🔧 ARM64 Platform Configuration');
+    console.log('\n🔧 Apple Silicon Platform Configuration');
     console.log('-------------------------------\n');
-    console.log(`🏗️  ARM64 ${platform} detected - patching SandboxDockerfile for local development`);
+    console.log(`🏗️  Apple Silicon detected (${platform}/${arch}) - patching SandboxDockerfile for local development`);
 
     const dockerfilePath = join(PROJECT_ROOT, 'SandboxDockerfile');
 
     if (!existsSync(dockerfilePath)) {
-      console.warn('⚠️  SandboxDockerfile not found - skipping ARM64 patching');
+      console.warn('⚠️  SandboxDockerfile not found - skipping Apple Silicon patching');
       return;
     }
 
@@ -2027,7 +2032,7 @@ class SetupManager {
         writeFileSync(dockerfilePath, updatedLines.join('\n'), 'utf-8');
         console.log(`✅ SandboxDockerfile patched with ${localPlatformOverride} platform flags`);
 
-        console.log('\n⚠️  IMPORTANT ARM64 NOTICE:');
+        console.log('\n⚠️  IMPORTANT APPLE SILICON NOTICE:');
         console.log('   • SandboxDockerfile patched for Apple Silicon local development');
         console.log(`   • Uses --platform=${localPlatformOverride} for sandbox base image compatibility`);
         console.log('   • Local platform flags will be automatically removed during deployment');
