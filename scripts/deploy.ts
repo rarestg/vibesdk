@@ -99,6 +99,8 @@ class CloudflareDeploymentManager {
   private cloudflare: Cloudflare;
   private aiGatewayCloudflare?: Cloudflare; // Separate SDK instance for AI Gateway operations
   private conflictingVarsForCleanup: Record<string, string> | null = null; // For signal cleanup
+  private originalDockerfileContentForCleanup: string | null = null; // For signal cleanup
+  private isSignalCleanupInProgress = false;
 
   constructor() {
     this.validateEnvironment();
@@ -119,6 +121,12 @@ class CloudflareDeploymentManager {
    */
   private setupSignalHandlers(): void {
     const gracefulExit = async (signal: string) => {
+      if (this.isSignalCleanupInProgress) {
+        console.log(`\n🛑 Received ${signal} while cleanup is already in progress...`);
+        return;
+      }
+
+      this.isSignalCleanupInProgress = true;
       console.log(`\n🛑 Received ${signal}, performing cleanup...`);
 
       try {
@@ -126,8 +134,17 @@ class CloudflareDeploymentManager {
         if (this.conflictingVarsForCleanup) {
           console.log('🔄 Restoring original wrangler.jsonc configuration...');
           await this.restoreOriginalVars(this.conflictingVarsForCleanup);
+          this.conflictingVarsForCleanup = null;
         } else {
           console.log('ℹ️  No configuration changes to restore');
+        }
+
+        if (this.originalDockerfileContentForCleanup) {
+          console.log('🔄 Restoring local Dockerfile platform flags...');
+          this.restoreDockerfileLocalFlags(this.originalDockerfileContentForCleanup);
+          this.originalDockerfileContentForCleanup = null;
+        } else {
+          console.log('ℹ️  No local Dockerfile changes to restore');
         }
       } catch (error) {
         console.error(`❌ Error during cleanup: ${error instanceof Error ? error.message : String(error)}`);
@@ -1771,6 +1788,7 @@ class CloudflareDeploymentManager {
     const startTime = Date.now();
     let customDomain: string | null = null;
     let originalDockerfileContent: string | null = null;
+    this.originalDockerfileContentForCleanup = null;
 
     try {
       // Step 1: Early Configuration Updates (must happen before any wrangler commands)
@@ -1779,6 +1797,7 @@ class CloudflareDeploymentManager {
 
       console.log('   🔧 Cleaning local platform flags from Dockerfile');
       originalDockerfileContent = this.cleanDockerfileForDeployment();
+      this.originalDockerfileContentForCleanup = originalDockerfileContent;
 
       console.log('   🔧 Updating package.json database commands');
       this.updatePackageJsonDatabaseCommands();
@@ -1904,6 +1923,7 @@ class CloudflareDeploymentManager {
         console.log('\n🔄 Restoring local development configuration...');
         this.restoreDockerfileLocalFlags(originalDockerfileContent);
       }
+      this.originalDockerfileContentForCleanup = null;
     }
   }
 }

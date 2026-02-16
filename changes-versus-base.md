@@ -13,7 +13,7 @@ This document is an onboarding summary of what changed in this fork versus its b
    Commit: `Merge pull request #328 from cloudflare/nightly`
 2. Post-format baseline: `7128322e12e17e77d39530806ba06d63c94dfdfc`  
    Commit: `chore: add second formatting commit to blame-ignore-revs`
-3. Current main at time of writing: `4a75589f642ca1db78ec47e1c58ca5ff05d6b074`
+3. Current main at branch start: `30d24d0`
 
 Why two baselines:
 
@@ -94,6 +94,7 @@ What changed:
 - per-attempt timeout raised from 60s to 150s to exceed sandbox SDK internal retry window
 - deployment generation tokens added to detect superseded retry loops
 - stale checks added at pre-attempt, post-cooldown, and post-result points
+- stale guards now also prevent stale-loop timeout and catch-path state mutations from resetting session state after supersession
 - circuit breaker added:
   - threshold: 5 startup-failure matches
   - cooldown: 60s
@@ -121,6 +122,7 @@ What changed:
 - setup patching now only applies on Apple Silicon (`arm64` + `darwin`)
 - setup rewrites legacy arm64 platform overrides to amd64 override
 - deployment cleanup strips both arm64 and amd64 local overrides before deploy, then restores original content in `finally`
+- signal cleanup now also restores Dockerfile local platform flags before exiting on SIGINT/SIGTERM
 
 Effect:
 
@@ -161,7 +163,7 @@ Total: 8 files, 397 insertions, 188 deletions
 
 ## Verification Snapshot
 
-Executed on `main` at 2026-02-16 11:12 EST:
+Executed on branch `codex/fix-stale-loop-and-signal-restore` at 2026-02-16 11:20 EST:
 
 1. `npm run typecheck` -> pass
 2. `npm run lint` -> pass
@@ -176,8 +178,9 @@ Observed non-blocking warnings:
 
 ## Known Follow-ups
 
-1. `scripts/deploy.ts`: signal handlers still call `process.exit(1)` directly, which can bypass Dockerfile restoration on interrupted deploy flows.
-2. `worker/agents/services/implementations/DeploymentManager.ts`: stale-loop catch-path state mutations can still happen before next staleness check in detached retry loops.
+1. The two previously tracked risks below are addressed in branch `codex/fix-stale-loop-and-signal-restore` and intended to merge via the next PR:
+   - stale deployment loops mutating shared state in failure paths after supersession
+   - SIGINT/SIGTERM cleanup bypassing Dockerfile local-flag restoration
 
 ## Recompute Commands
 
@@ -193,4 +196,3 @@ git diff --shortstat 7128322..HEAD
 git diff --numstat 7128322..HEAD
 git log --reverse --no-merges --oneline 7128322..HEAD
 ```
-
