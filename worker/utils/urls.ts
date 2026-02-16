@@ -82,7 +82,15 @@ export function buildGitCloneUrl(env: Env, appId: string, token?: string, reques
     }
   }
 
-  const protocol = getProtocolForHost(domain);
+  let hostForProtocol = domain;
+  try {
+    // Normalizes hosts like "[::1]:5173" to "::1" for local protocol detection.
+    hostForProtocol = (new URL(`http://${domain}`).hostname || domain).replace(/^\[|\]$/g, '');
+  } catch {
+    hostForProtocol = domain;
+  }
+
+  const protocol = getProtocolForHost(hostForProtocol);
   // Git expects username:password format. Use 'oauth2' as username and token as password
   // This is a standard pattern for token-based git authentication
   const auth = token ? `oauth2:${token}@` : '';

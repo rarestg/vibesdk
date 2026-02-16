@@ -97,7 +97,7 @@ export type DeploymentFailedMessage = {
   type: 'deployment_failed';
   error: string;
   attempt?: number;
-  terminal?: boolean;
+  terminal: boolean;
   deploymentCycleId?: string;
 };
 

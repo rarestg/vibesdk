@@ -53,4 +53,15 @@ describe('buildGitCloneUrl', () => {
 
     expect(buildGitCloneUrl(env, 'app-123', 'token-abc')).toBe('https://oauth2:token-abc@vibe-sdk.net/apps/app-123.git');
   });
+
+  it('uses http for bracketed localhost IPv6 hosts', () => {
+    const env = createEnv({
+      CUSTOM_DOMAIN: 'vibe-sdk.net',
+    });
+    const request = new Request('http://[::1]:5173/api/apps/app-123/git/token');
+
+    expect(buildGitCloneUrl(env, 'app-123', 'token-abc', request)).toBe(
+      'http://oauth2:token-abc@[::1]:5173/apps/app-123.git',
+    );
+  });
 });

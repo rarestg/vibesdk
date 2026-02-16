@@ -668,9 +668,7 @@ export function createWebSocketMessageHandler(deps: HandleMessageDeps) {
       }
 
       case 'deployment_failed': {
-        const isAttemptLevelFailure =
-          message.terminal === false ||
-          (typeof message.error === 'string' && /^Deployment attempt \d+ failed:/.test(message.error));
+        const isAttemptLevelFailure = message.terminal === false;
 
         if (isAttemptLevelFailure) {
           // Retryable failure; keep UI in deploying state and wait for terminal success/failure.

@@ -37,7 +37,7 @@ import { ResourceProvisioner } from './resourceProvisioner';
 import { TemplateParser } from './templateParser';
 import { ResourceProvisioningResult } from './types';
 import { getPreviewDomain, migratePreviewUrl } from '../../utils/urls';
-import { isDev } from 'worker/utils/envs';
+import { isDev, isEnabledEnvFlag } from 'worker/utils/envs';
 import { FileTreeBuilder } from './fileTreeBuilder';
 import { DeploymentTarget } from 'worker/agents/core/types';
 // Export the Sandbox class in your Worker
@@ -94,12 +94,6 @@ function getAutoAllocatedSandbox(sessionId: string): string {
 
   console.log(`Session mapped to container`, { sessionId, containerId, hash, containerIndex });
   return containerId;
-}
-
-function isEnabledEnvFlag(value: string | undefined): boolean {
-  if (!value) return false;
-  const normalized = value.trim().toLowerCase();
-  return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on';
 }
 
 export class SandboxSdkClient extends BaseSandboxService {
@@ -835,7 +829,17 @@ export class SandboxSdkClient extends BaseSandboxService {
    * Starts a cloudflared tunnel for the specified instance
    * Super usefulfor local development
    */
-  private async startCloudflaredTunnel(instanceId: string, port: number): Promise<{ url: string; processId: string }> {
+  private async startCloudflaredTunnel(
+    instanceId: string,
+    port: number,
+    options?: {
+      waitForUrl?: boolean;
+      urlTimeoutMs?: number;
+      onUrlDetected?: (url: string, processId: string) => void | Promise<void>;
+    },
+  ): Promise<{ url: string; processId: string }> {
+    const waitForUrl = options?.waitForUrl ?? true;
+    const urlTimeoutMs = options?.urlTimeoutMs ?? 20000;
     try {
       const session = await this.getOrCreateSession(`${instanceId}-tunnel`, `/workspace/${instanceId}`);
       const process = await session.startProcess(`cloudflared tunnel --url http://localhost:${port}`);
@@ -844,12 +848,11 @@ export class SandboxSdkClient extends BaseSandboxService {
       // Stream process logs to extract the preview URL
       const logStream = await this.getSandbox().streamProcessLogs(process.id);
 
-      return new Promise<{ url: string; processId: string }>((resolve, reject) => {
+      const waitForUrlPromise = new Promise<string>((resolve, reject) => {
         const timeout = setTimeout(() => {
-          // reject(new Error('Timeout waiting for cloudflared tunnel URL'));
           this.logger.warn('Timeout waiting for cloudflared tunnel URL');
-          resolve({ url: '', processId: process.id });
-        }, 20000); // 20 second timeout
+          resolve('');
+        }, urlTimeoutMs);
 
         const processLogs = async () => {
           try {
@@ -865,7 +868,7 @@ export class SandboxSdkClient extends BaseSandboxService {
                   clearTimeout(timeout);
                   const previewURL = urlMatch[0];
                   this.logger.info(`Found cloudflared tunnel URL: ${previewURL}`);
-                  resolve({ url: previewURL, processId: process.id });
+                  resolve(previewURL);
                   return;
                 }
               }
@@ -877,8 +880,39 @@ export class SandboxSdkClient extends BaseSandboxService {
           }
         };
 
-        processLogs();
+        void processLogs();
       });
+
+      if (!waitForUrl) {
+        void waitForUrlPromise
+          .then(async (url) => {
+            if (!url || !options?.onUrlDetected) {
+              return;
+            }
+
+            try {
+              await options.onUrlDetected(url, process.id);
+            } catch (error) {
+              this.logger.warn('Failed to process detected tunnel URL in background', {
+                instanceId,
+                processId: process.id,
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
+          })
+          .catch((error) => {
+            this.logger.warn('Background tunnel URL detection failed', {
+              instanceId,
+              processId: process.id,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+
+        return { url: '', processId: process.id };
+      }
+
+      const url = await waitForUrlPromise;
+      return { url, processId: process.id };
     } catch (error) {
       this.logger.warn('Failed to start cloudflared tunnel', error);
       throw error;
@@ -1252,15 +1286,35 @@ export class SandboxSdkClient extends BaseSandboxService {
 
             if (metadata.allocatedPort) {
               try {
-                const restartedTunnel = await this.startCloudflaredTunnel(instanceId, metadata.allocatedPort);
+                const restartedTunnel = await this.startCloudflaredTunnel(instanceId, metadata.allocatedPort, {
+                  waitForUrl: false,
+                  onUrlDetected: async (url, processId) => {
+                    const latestMetadata = await this.getInstanceMetadata(instanceId);
+                    if (!latestMetadata) {
+                      return;
+                    }
+
+                    const updatedMetadata: InstanceMetadata = {
+                      ...latestMetadata,
+                      previewURL: url,
+                      tunnelURL: url,
+                      tunnelProcessId: processId,
+                    };
+                    await this.storeInstanceMetadata(instanceId, updatedMetadata);
+                    this.logger.info('Updated tunnel URL after background detection', {
+                      instanceId,
+                      tunnelURL: url,
+                      tunnelProcessId: processId,
+                    });
+                  },
+                });
                 metadata = {
                   ...metadata,
-                  previewURL: restartedTunnel.url || metadata.previewURL,
-                  tunnelURL: restartedTunnel.url || metadata.tunnelURL,
                   tunnelProcessId: restartedTunnel.processId,
                 };
                 await this.storeInstanceMetadata(instanceId, metadata);
-                tunnelHealthy = !!restartedTunnel.url;
+                // Process launch success is enough for "healthy"; URL extraction can complete asynchronously.
+                tunnelHealthy = !!restartedTunnel.processId;
               } catch (restartError) {
                 this.logger.error('Failed to restart tunnel process', restartError, { instanceId });
                 tunnelHealthy = false;
