@@ -96,8 +96,6 @@ function getAutoAllocatedSandbox(sessionId: string): string {
 }
 
 export class SandboxSdkClient extends BaseSandboxService {
-  private static readonly BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-
   private sandbox: SandboxType;
   private metadataCache = new Map<string, InstanceMetadata>();
   private sessionCache = new Map<string, ExecutionSession>();
@@ -256,23 +254,14 @@ export class SandboxSdkClient extends BaseSandboxService {
    * at chunk boundaries for multi-byte characters.
    */
   private encodeUtf8ToBase64(input: string): string {
-    const bytes = new TextEncoder().encode(input);
-    const output: string[] = [];
+    return Buffer.from(input, 'utf8').toString('base64');
+  }
 
-    for (let i = 0; i < bytes.length; i += 3) {
-      const byte1 = bytes[i]!;
-      const byte2 = i + 1 < bytes.length ? bytes[i + 1]! : 0;
-      const byte3 = i + 2 < bytes.length ? bytes[i + 2]! : 0;
-
-      const triplet = (byte1 << 16) | (byte2 << 8) | byte3;
-
-      output.push(SandboxSdkClient.BASE64_ALPHABET[(triplet >> 18) & 0x3f]!);
-      output.push(SandboxSdkClient.BASE64_ALPHABET[(triplet >> 12) & 0x3f]!);
-      output.push(i + 1 < bytes.length ? SandboxSdkClient.BASE64_ALPHABET[(triplet >> 6) & 0x3f]! : '=');
-      output.push(i + 2 < bytes.length ? SandboxSdkClient.BASE64_ALPHABET[triplet & 0x3f]! : '=');
-    }
-
-    return output.join('');
+  /**
+   * Escape a string for single-quoted shell usage.
+   */
+  private escapeForSingleQuotedShell(value: string): string {
+    return value.replace(/'/g, "'\\''");
   }
 
   /**
@@ -291,11 +280,12 @@ export class SandboxSdkClient extends BaseSandboxService {
     // Generate shell script
     const scriptLines = ['#!/bin/bash'];
 
-    for (const { filePath, fileContents } of files) {
+    for (const [index, { filePath, fileContents }] of files.entries()) {
       const base64 = this.encodeUtf8ToBase64(fileContents);
+      const escapedFilePath = this.escapeForSingleQuotedShell(filePath);
 
       scriptLines.push(
-        `mkdir -p "$(dirname "${filePath}")" && printf '%s' '${base64}' | base64 -d > "${filePath}" && echo "OK:${filePath}" || echo "FAIL:${filePath}"`,
+        `mkdir -p "$(dirname -- '${escapedFilePath}')" && printf '%s' '${base64}' | base64 -d > '${escapedFilePath}' && echo "OK:${index}" || echo "FAIL:${index}"`,
       );
     }
 
@@ -314,19 +304,21 @@ export class SandboxSdkClient extends BaseSandboxService {
 
       // Parse results from output
       const output = stdout + stderr;
-      const matches = output.matchAll(/OK:(.+)/g);
-      const successPaths = new Set<string>();
+      const matches = output.matchAll(/OK:(\d+)/g);
+      const successIndexes = new Set<number>();
       for (const match of matches) {
-        if (match[1]) successPaths.add(match[1]);
+        if (match[1]) {
+          successIndexes.add(Number(match[1]));
+        }
       }
 
-      const results = files.map(({ filePath }) => ({
+      const results = files.map(({ filePath }, index) => ({
         file: filePath,
-        success: successPaths.has(filePath),
-        error: successPaths.has(filePath) ? undefined : 'Write failed',
+        success: successIndexes.has(index),
+        error: successIndexes.has(index) ? undefined : 'Write failed',
       }));
 
-      const successCount = successPaths.size;
+      const successCount = successIndexes.size;
       const failedCount = files.length - successCount;
 
       if (failedCount > 0) {
@@ -1333,6 +1325,9 @@ export class SandboxSdkClient extends BaseSandboxService {
       }
 
       const successCount = results.filter((r) => r.success).length;
+      const failedCount = results.length - successCount;
+      const isSuccess = failedCount === 0;
+      const failureMessage = `Failed to write ${failedCount}/${results.length} files`;
 
       // If code files were modified, touch .reload-trigger to trigger a page reload
       // We use .reload-trigger instead of vite.config.ts because:
@@ -1347,9 +1342,10 @@ export class SandboxSdkClient extends BaseSandboxService {
       }
 
       return {
-        success: true,
+        success: isSuccess,
         results,
-        message: `Successfully wrote ${successCount}/${files.length} files`,
+        message: isSuccess ? `Successfully wrote ${successCount}/${files.length} files` : failureMessage,
+        error: isSuccess ? undefined : failureMessage,
       };
     } catch (error) {
       this.logger.error('writeFiles', error, { instanceId });
