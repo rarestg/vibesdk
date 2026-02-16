@@ -605,14 +605,15 @@ class CloudflareDeploymentManager {
   }
 
   /**
-   * Cleans ARM64 platform flags from SandboxDockerfile for production deployment
-   * Returns the original content if ARM64 flags were removed (for restoration)
+   * Cleans local platform flags from SandboxDockerfile for production deployment.
+   * Strips both --platform=linux/arm64 and --platform=linux/amd64 overrides.
+   * Returns the original content if flags were removed (for restoration).
    */
   private cleanDockerfileForDeployment(): string | null {
     const dockerfilePath = join(PROJECT_ROOT, 'SandboxDockerfile');
 
     if (!existsSync(dockerfilePath)) {
-      console.log('     ℹ️  SandboxDockerfile not found - skipping ARM64 cleanup');
+      console.log('     ℹ️  SandboxDockerfile not found - skipping platform cleanup');
       return null;
     }
 
@@ -623,8 +624,8 @@ class CloudflareDeploymentManager {
       // Split content into lines for processing
       const lines = originalContent.split('\n');
       const cleanedLines = lines.map((line) => {
-        // Look for FROM statements with --platform=linux/arm64 and remove the flag
-        const fromMatch = line.match(/^(\s*FROM\s+)--platform=linux\/arm64\s+(.*)/);
+        // Remove any local platform override (arm64 or amd64) from FROM statements
+        const fromMatch = line.match(/^(\s*FROM\s+)--platform=linux\/(?:arm64|amd64)\s+(.*)/);
         if (fromMatch) {
           modified = true;
           const [, prefix, image] = fromMatch;
@@ -635,10 +636,10 @@ class CloudflareDeploymentManager {
 
       if (modified) {
         writeFileSync(dockerfilePath, cleanedLines.join('\n'), 'utf-8');
-        console.log('     ✅ Removed ARM64 platform flags from SandboxDockerfile');
+        console.log('     ✅ Removed local platform flags from SandboxDockerfile');
         return originalContent; // Return original for restoration
       } else {
-        console.log('     ✅ No ARM64 platform flags found in SandboxDockerfile');
+        console.log('     ✅ No local platform flags found in SandboxDockerfile');
         return null; // Nothing to restore
       }
     } catch (error) {
@@ -651,19 +652,19 @@ class CloudflareDeploymentManager {
   }
 
   /**
-   * Restores ARM64 platform flags to SandboxDockerfile if they were previously removed
+   * Restores local platform flags to SandboxDockerfile if they were previously removed
    */
-  private restoreDockerfileARM64Flags(originalContent: string): void {
+  private restoreDockerfileLocalFlags(originalContent: string): void {
     const dockerfilePath = join(PROJECT_ROOT, 'SandboxDockerfile');
 
     try {
       writeFileSync(dockerfilePath, originalContent, 'utf-8');
-      console.log('🔄 Restored ARM64 platform flags to SandboxDockerfile for local development');
+      console.log('🔄 Restored local platform flags to SandboxDockerfile for local development');
     } catch (error) {
       console.warn(
-        `⚠️  Could not restore ARM64 flags to SandboxDockerfile: ${error instanceof Error ? error.message : String(error)}`,
+        `⚠️  Could not restore platform flags to SandboxDockerfile: ${error instanceof Error ? error.message : String(error)}`,
       );
-      console.warn('   You may need to manually re-run the setup script to restore ARM64 flags');
+      console.warn('   You may need to manually re-run the setup script to restore platform flags');
     }
   }
 
@@ -1776,7 +1777,7 @@ class CloudflareDeploymentManager {
       this.cleanWranglerCache();
       console.log('\n📋 Step 1: Updating configuration files...');
 
-      console.log('   🔧 Cleaning ARM64 development flags from Dockerfile');
+      console.log('   🔧 Cleaning local platform flags from Dockerfile');
       originalDockerfileContent = this.cleanDockerfileForDeployment();
 
       console.log('   🔧 Updating package.json database commands');
@@ -1873,10 +1874,10 @@ class CloudflareDeploymentManager {
         console.log(`\n🎉 Complete deployment finished successfully in ${duration}s!`);
         console.log(`✅ Your Cloudflare Orange Build platform is now live at https://${customDomain}! 🚀`);
 
-        // Restore ARM64 flags for continued local development
+        // Restore local platform flags for continued local development
         if (originalDockerfileContent) {
           console.log('\n🔄 Restoring local development configuration...');
-          this.restoreDockerfileARM64Flags(originalDockerfileContent);
+          this.restoreDockerfileLocalFlags(originalDockerfileContent);
         }
       } else {
         throw new DeploymentError('Deployment failed during wrangler deploy or secret update');
@@ -1902,10 +1903,10 @@ class CloudflareDeploymentManager {
 
       process.exit(1);
     } finally {
-      // Always restore ARM64 flags if they were removed, even on deployment failure
+      // Always restore local platform flags if they were removed, even on deployment failure
       if (originalDockerfileContent) {
         console.log('\n🔄 Restoring local development configuration...');
-        this.restoreDockerfileARM64Flags(originalDockerfileContent);
+        this.restoreDockerfileLocalFlags(originalDockerfileContent);
       }
     }
   }
