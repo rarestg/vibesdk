@@ -64,18 +64,18 @@ const PLATFORM_AGENT_CONFIG: AgentConfig = {
     fallbackModel: AIModels.GEMINI_3_FLASH_PREVIEW,
   },
   phaseGeneration: {
-    name: AIModels.GEMINI_3_FLASH_PREVIEW,
+    name: AIModels.GEMINI_3_PRO_PREVIEW,
     reasoning_effort: 'medium',
     max_tokens: 8000,
     temperature: 1,
-    fallbackModel: AIModels.OPENAI_5_MINI,
+    fallbackModel: AIModels.GEMINI_3_FLASH_PREVIEW,
   },
   firstPhaseImplementation: {
-    name: AIModels.GEMINI_3_FLASH_PREVIEW,
+    name: AIModels.GEMINI_3_PRO_PREVIEW,
     ...SHARED_IMPLEMENTATION_CONFIG,
   },
   phaseImplementation: {
-    name: AIModels.GEMINI_3_FLASH_PREVIEW,
+    name: AIModels.GEMINI_3_PRO_PREVIEW,
     ...SHARED_IMPLEMENTATION_CONFIG,
   },
   conversationalResponse: {
@@ -100,7 +100,7 @@ const PLATFORM_AGENT_CONFIG: AgentConfig = {
     fallbackModel: AIModels.GROK_CODE_FAST_1,
   },
   agenticProjectBuilder: {
-    name: AIModels.GEMINI_3_FLASH_PREVIEW,
+    name: AIModels.GEMINI_3_PRO_PREVIEW,
     reasoning_effort: 'medium',
     max_tokens: 8000,
     temperature: 1,
