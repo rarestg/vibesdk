@@ -1,7 +1,7 @@
 # Changes Versus Base
 
 Date: 2026-02-16  
-Repo: `/Users/rares/GITHUB/SANDBOX/vibesdk`
+Repo: `<REPO_ROOT>`
 
 ## Purpose
 
