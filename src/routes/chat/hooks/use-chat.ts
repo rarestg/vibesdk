@@ -140,6 +140,8 @@ export function useChat({
 
   // Preview deployment state
   const [isPreviewDeploying, setIsPreviewDeploying] = useState(false);
+  const previewDeployInFlightRef = useRef(false);
+  const previewDeployRequestStartedAtRef = useRef<number | null>(null);
 
   // Redeployment state - tracks when redeploy button should be enabled
   const [isRedeployReady, setIsRedeployReady] = useState(false);
@@ -249,6 +251,8 @@ export function useChat({
         onTerminalMessage,
         onVaultUnlockRequired,
         clearDeploymentTimeout,
+        previewDeployInFlightRef,
+        previewDeployRequestStartedAtRef,
         onPresentationFileEvent: (evt) => {
           if (!evt.path.includes('/slides/')) return;
           window.dispatchEvent(new CustomEvent('presentation-file-event', { detail: evt }));
@@ -353,10 +357,24 @@ export function useChat({
 
         ws.addEventListener('message', (event) => {
           try {
-            const message: WebSocketMessage = JSON.parse(event.data);
+            let message: WebSocketMessage = JSON.parse(event.data);
+
+            // Normalize malformed envelopes where `type` contains stringified JSON
+            // e.g. { type: '{"state":...,"type":"cf_agent_state"}' }
+            if (typeof message.type === 'string' && message.type.startsWith('{')) {
+              try {
+                const inner = JSON.parse(message.type);
+                if (inner && typeof inner.type === 'string') {
+                  message = inner as WebSocketMessage;
+                }
+              } catch {
+                // Not valid JSON in type field, proceed with original message
+              }
+            }
+
             handleWebSocketMessage(ws, message);
           } catch (parseError) {
-            logger.error('❌ Error parsing WebSocket message:', parseError, event.data);
+            logger.error('Error parsing WebSocket message:', parseError, event.data);
           }
         });
 
