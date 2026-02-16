@@ -37,7 +37,8 @@ if (!env.WRANGLER_DOCKER_HOST) {
 }
 
 const viteExecutable = process.platform === 'win32' ? 'vite.cmd' : 'vite';
-const viteProcess = spawn(viteExecutable, [], {
+const viteArgs = process.argv.slice(2);
+const viteProcess = spawn(viteExecutable, viteArgs, {
 	env,
 	stdio: 'inherit',
 });
