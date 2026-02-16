@@ -50,6 +50,7 @@ interface InstanceMetadata {
   previewURL?: string;
   tunnelURL?: string;
   tunnelProcessId?: string;
+  tunnelUrlPendingSince?: string;
   processId?: string;
   allocatedPort?: number;
   donttouch_files: string[];
@@ -75,6 +76,8 @@ export enum AllocationStrategy {
   MANY_TO_ONE = 'many_to_one',
   ONE_TO_ONE = 'one_to_one',
 }
+
+const TUNNEL_URL_PENDING_TIMEOUT_MS = 90000;
 
 function getAutoAllocatedSandbox(sessionId: string): string {
   // Distribute sessions across available containers using consistent hashing
@@ -1296,13 +1299,47 @@ export class SandboxSdkClient extends BaseSandboxService {
           const tunnelProcessRunning = !!tunnelProcess;
 
           let tunnelHealthy = tunnelProcessRunning && hasTunnelUrl;
+          let shouldRestartTunnel = !tunnelHealthy;
           if (!tunnelHealthy && tunnelProcessRunning && !hasTunnelUrl) {
-            pending = true;
-            this.logger.info('Tunnel process running without URL; waiting for async URL detection', {
-              instanceId,
-              tunnelProcessId: metadata.tunnelProcessId,
-            });
-          } else if (!tunnelHealthy) {
+            const now = Date.now();
+            const pendingSinceMs = metadata.tunnelUrlPendingSince ? Date.parse(metadata.tunnelUrlPendingSince) : NaN;
+            const hasValidPendingSince = Number.isFinite(pendingSinceMs);
+            const pendingDurationMs = hasValidPendingSince ? now - pendingSinceMs : 0;
+            const pendingStalled = hasValidPendingSince && pendingDurationMs >= TUNNEL_URL_PENDING_TIMEOUT_MS;
+
+            if (pendingStalled) {
+              this.logger.warn('Tunnel URL detection stalled, restarting tunnel process', {
+                instanceId,
+                tunnelProcessId: metadata.tunnelProcessId,
+                pendingDurationMs,
+                timeoutMs: TUNNEL_URL_PENDING_TIMEOUT_MS,
+              });
+              shouldRestartTunnel = true;
+            } else {
+              if (!metadata.tunnelUrlPendingSince || !hasValidPendingSince) {
+                metadata = {
+                  ...metadata,
+                  tunnelUrlPendingSince: new Date(now).toISOString(),
+                };
+                await this.storeInstanceMetadata(instanceId, metadata);
+              }
+
+              pending = true;
+              shouldRestartTunnel = false;
+              this.logger.info('Tunnel process running without URL; waiting for async URL detection', {
+                instanceId,
+                tunnelProcessId: metadata.tunnelProcessId,
+              });
+            }
+          } else if (metadata.tunnelUrlPendingSince) {
+            metadata = {
+              ...metadata,
+              tunnelUrlPendingSince: undefined,
+            };
+            await this.storeInstanceMetadata(instanceId, metadata);
+          }
+
+          if (shouldRestartTunnel) {
             this.logger.warn('Tunnel process missing or unhealthy, attempting restart', {
               instanceId,
               tunnelProcessId: metadata.tunnelProcessId,
@@ -1325,6 +1362,7 @@ export class SandboxSdkClient extends BaseSandboxService {
                       previewURL: url,
                       tunnelURL: url,
                       tunnelProcessId: processId,
+                      tunnelUrlPendingSince: undefined,
                     };
                     await this.storeInstanceMetadata(instanceId, updatedMetadata);
                     this.logger.info('Updated tunnel URL after background detection', {
@@ -1350,6 +1388,7 @@ export class SandboxSdkClient extends BaseSandboxService {
                     ...updatedMetadata,
                     previewURL: updatedMetadata.previewURL === previousTunnelUrl ? '' : updatedMetadata.previewURL,
                     tunnelURL: '',
+                    tunnelUrlPendingSince: new Date().toISOString(),
                   };
                 }
 
@@ -1365,6 +1404,7 @@ export class SandboxSdkClient extends BaseSandboxService {
                     ...updatedMetadata,
                     previewURL: latestBeforeStore.previewURL,
                     tunnelURL: latestBeforeStore.tunnelURL,
+                    tunnelUrlPendingSince: undefined,
                   };
                 }
 
@@ -1438,6 +1478,14 @@ export class SandboxSdkClient extends BaseSandboxService {
         }
       }
 
+      if (metadata.tunnelProcessId) {
+        try {
+          await sandbox.killProcess(metadata.tunnelProcessId);
+        } catch (error) {
+          this.logger.warn(`Failed to kill tunnel process ${metadata.tunnelProcessId}`, error);
+        }
+      }
+
       // Unexpose the allocated port if we know what it was
       if (metadata.allocatedPort) {
         try {
@@ -1450,6 +1498,7 @@ export class SandboxSdkClient extends BaseSandboxService {
 
       // Clean up files
       await this.safeSandboxExec(`rm -rf ${instanceId}`);
+      await this.safeSandboxExec(`rm -f ${this.getInstanceMetadataFile(instanceId)}`);
 
       // Invalidate session cache
       this.invalidateSessionCache(instanceId);

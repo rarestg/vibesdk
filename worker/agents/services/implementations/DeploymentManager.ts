@@ -723,6 +723,7 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
         }
 
         logger.warn(`DEPLOYMENT CHECK INCOMPLETE: Instance ${sandboxInstanceId} has no preview URL, recreating`);
+        await this.shutdownStaleInstance(sandboxInstanceId);
       }
       logger.error(`DEPLOYMENT CHECK FAILED: Failed to get status for instance ${sandboxInstanceId}, redeploying...`);
     }
@@ -839,6 +840,24 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
 
     logger.warn('Timed out waiting for preview URL', { instanceId, timeoutMs: PREVIEW_URL_WAIT_TIMEOUT_MS });
     return null;
+  }
+
+  private async shutdownStaleInstance(instanceId: string): Promise<void> {
+    const logger = this.getLog();
+    const client = this.getClient();
+
+    logger.warn(`Shutting down stale sandbox instance ${instanceId} before recreate`);
+    const shutdownResponse = await client.shutdownInstance(instanceId);
+    if (!shutdownResponse.success) {
+      throw new Error(
+        `Failed to shutdown stale sandbox instance ${instanceId}: ${shutdownResponse.error || 'Unknown error'}`,
+      );
+    }
+
+    this.setState({
+      ...this.getState(),
+      sandboxInstanceId: undefined,
+    });
   }
 
   /**
