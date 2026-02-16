@@ -9,9 +9,11 @@ cloudflare-dev/userappsandboxservice:54410b38 echo "works" succeeds)
 
 The Docker socket situation:
 
-- Active context: desktop-linux pointing to unix:///Users/rares/.docker/run/docker.sock
+- Active context: desktop-linux pointing to unix://<USER_HOME>/.docker/run/docker.sock
 - /var/run/docker.sock does NOT exist
-- /Users/rares/.docker/run/docker.sock exists and works
+- <USER_HOME>/.docker/run/docker.sock exists and works
+
+(`<USER_HOME>` is a placeholder for a developer's home directory.)
 
 The error comes from workerd's native container runtime calling ctx.container.start(). The
 hypothesis is that workerd/miniflare is trying to use /var/run/docker.sock (which doesn't
@@ -51,7 +53,7 @@ back to the hardcoded path /var/run/docker.sock -- which does not exist on your 
 The Full Resolution Chain
 
 The containerEngine value is resolved through this priority chain (found at line 250472 of
-/Users/rares/GITHUB/SANDBOX/vibesdk/node_modules/wrangler/wrangler-dist/cli.js):
+<REPO_ROOT>/node_modules/wrangler/wrangler-dist/cli.js):
 
 containerEngine: useContainers
 ? input.dev?.containerEngine // (1) Programmatic override
@@ -97,8 +99,7 @@ return null;
 
 On Docker CLI 24.0.5, docker context ls --format json outputs a single-line JSON array:
 
-[{"Current":false,...},{"Current":true,"DockerEndpoint":"unix:///Users/rares/.docker/run/docker
-.sock",...}]
+[{"Current":false,...},{"Current":true,"DockerEndpoint":"unix://<USER_HOME>/.docker/run/docker.sock",...}]
 
 The code expects NDJSON (one JSON object per line). Because the output is a single line
 containing a JSON array:
@@ -114,7 +115,7 @@ This causes resolveDockerHost to fall through to the hardcoded default
 unix:///var/run/docker.sock, which does not exist on your macOS Docker Desktop setup.
 
 How miniflare consumes it (line 52687-52695 of
-/Users/rares/GITHUB/SANDBOX/vibesdk/node_modules/miniflare/dist/src/index.js)
+<REPO_ROOT>/node_modules/miniflare/dist/src/index.js)
 
 function getContainerEngine(engineOrSocketPath) {
 if (!engineOrSocketPath) {
@@ -139,23 +140,23 @@ Fix 1: Environment Variable (Quickest)
 
 Set DOCKER_HOST or WRANGLER_DOCKER_HOST before running wrangler dev:
 
-export DOCKER_HOST="unix:///Users/rares/.docker/run/docker.sock"
+export DOCKER_HOST="unix://<USER_HOME>/.docker/run/docker.sock"
 wrangler dev
 
 Or the wrangler-specific one:
 
-export WRANGLER_DOCKER_HOST="unix:///Users/rares/.docker/run/docker.sock"
+export WRANGLER_DOCKER_HOST="unix://<USER_HOME>/.docker/run/docker.sock"
 
 Fix 2: wrangler.jsonc Configuration (Persistent)
 
 Add container_engine to the dev section. The config schema (in
-/Users/rares/GITHUB/SANDBOX/vibesdk/node_modules/wrangler/config-schema.json, lines 2962-2965
+<REPO_ROOT>/node_modules/wrangler/config-schema.json, lines 2962-2965
 and 2969-3000) shows it accepts either a string or an object:
 
 // In wrangler.jsonc
 "dev": {
 "enable_containers": true,
-"container_engine": "unix:///Users/rares/.docker/run/docker.sock"
+"container_engine": "unix://<USER_HOME>/.docker/run/docker.sock"
 }
 
 Or the object form:
@@ -164,14 +165,14 @@ Or the object form:
 "enable_containers": true,
 "container_engine": {
 "localDocker": {
-"socketPath": "unix:///Users/rares/.docker/run/docker.sock"
+"socketPath": "unix://<USER_HOME>/.docker/run/docker.sock"
 }
 }
 }
 
 Fix 3: Create a Symlink (System-Wide)
 
-sudo ln -s /Users/rares/.docker/run/docker.sock /var/run/docker.sock
+sudo ln -s <USER_HOME>/.docker/run/docker.sock /var/run/docker.sock
 
 This is fragile and not recommended.
 

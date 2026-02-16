@@ -67,7 +67,7 @@ function getDockerSocketFromContext(dockerPath) {
 This code expects `docker context ls --format json` to output **NDJSON** (one JSON object per line). But Docker CLI v24+ outputs a **single-line JSON array** instead:
 
 ```json
-[{"Current":false,...},{"Current":true,"DockerEndpoint":"unix:///Users/rares/.docker/run/docker.sock",...}]
+[{"Current":false,...},{"Current":true,"DockerEndpoint":"unix://<USER_HOME>/.docker/run/docker.sock",...}]
 ```
 
 What happens:
@@ -91,17 +91,19 @@ This path is passed via miniflare's `getContainerEngine()` (line 52687 of `node_
 
 ### Environment State
 
+Paths in this section use `<USER_HOME>` as a placeholder for a developer's home directory.
+
 ```
 $ docker context ls
 NAME              TYPE   DESCRIPTION                                DOCKER ENDPOINT
 default           moby   Current DOCKER_HOST based configuration    unix:///var/run/docker.sock
-desktop-linux *   moby   Docker Desktop                             unix:///Users/rares/.docker/run/docker.sock
+desktop-linux *   moby   Docker Desktop                             unix://<USER_HOME>/.docker/run/docker.sock
 
 $ ls /var/run/docker.sock
 ls: /var/run/docker.sock: No such file or directory
 
-$ ls /Users/rares/.docker/run/docker.sock
-srwxr-xr-x  1 rares  staff  0 Feb 16 11:56 /Users/rares/.docker/run/docker.sock
+$ ls <USER_HOME>/.docker/run/docker.sock
+srwxr-xr-x  1 <user>  <group>  0 <timestamp> <USER_HOME>/.docker/run/docker.sock
 ```
 
 The active Docker context (`desktop-linux`) points to the correct socket, but wrangler cannot parse it.
@@ -163,7 +165,7 @@ Setting `DOCKER_HOST` short-circuits the entire resolution chain, bypassing both
 1. **Initial hypothesis**: Docker Desktop memory (5.8 GiB) was below the container's 8 GiB request. Bumped to 11.68 GiB. Issue persisted.
 2. **Ruled out image issues**: `docker run --rm <image> echo "works"` succeeded. The container starts fine when Docker CLI talks to Docker directly.
 3. **Ruled out container creation**: `docker ps -a` showed zero sandbox containers ever created. Workerd never successfully communicated with Docker.
-4. **Identified socket mismatch**: `/var/run/docker.sock` does not exist; real socket is at `/Users/rares/.docker/run/docker.sock`.
+4. **Identified socket mismatch**: `/var/run/docker.sock` does not exist; real socket is at `<USER_HOME>/.docker/run/docker.sock`.
 5. **Traced wrangler resolution**: Found `resolveDockerHost()` -> `getDockerSocketFromContext()` parsing bug with Docker CLI v24+ JSON array output format.
 6. **First fix attempt**: Added `container_engine` to `wrangler.jsonc`. Issue persisted.
 7. **Traced Vite plugin code path**: Found `@cloudflare/vite-plugin` overwrites `container_engine` unconditionally at line 15557, ignoring the config value.
@@ -172,13 +174,22 @@ Setting `DOCKER_HOST` short-circuits the entire resolution chain, bypassing both
 
 ## Fix Applied
 
-Added `WRANGLER_DOCKER_HOST` env var to the dev script in `package.json`:
+The primary fix was to force wrangler/vite-plugin to use `WRANGLER_DOCKER_HOST` (not `DOCKER_HOST`) so Docker socket resolution bypasses the broken auto-detection path.
+
+Current implementation in `package.json`:
 
 ```json
-"dev": "DEV_MODE=true WRANGLER_DOCKER_HOST=unix:///Users/rares/.docker/run/docker.sock vite",
+"dev": "tsx scripts/dev.ts",
 ```
 
-The `wrangler.jsonc` `container_engine` config was reverted since the Vite plugin ignores it.
+`scripts/dev.ts` now:
+
+- sets `DEV_MODE=true`
+- preserves any existing `WRANGLER_DOCKER_HOST`
+- auto-detects a local socket path (`~/.docker/run/docker.sock` or `/var/run/docker.sock`) when the env var is unset
+- starts Vite with that scoped env var
+
+This keeps the fix while removing machine-specific hardcoded paths from `package.json`. The `wrangler.jsonc` `container_engine` config remains reverted because the Vite plugin ignores it.
 
 ### Why `WRANGLER_DOCKER_HOST` and Not `DOCKER_HOST`
 
@@ -195,7 +206,7 @@ ERROR: failed to solve: docker.io/cloudflare/sandbox:0.5.6: failed to do request
 
 | Fix | Method | Pros | Cons |
 |-----|--------|------|------|
-| `WRANGLER_DOCKER_HOST` in dev script (applied) | `WRANGLER_DOCKER_HOST=unix:///... vite` | Persistent, scoped to wrangler only | Machine-specific path in package.json |
+| `WRANGLER_DOCKER_HOST` via dev launcher (applied) | `tsx scripts/dev.ts` auto-detects socket and sets `WRANGLER_DOCKER_HOST` | Persistent, scoped to wrangler only, portable across local setups | Requires keeping `scripts/dev.ts` in sync |
 | `WRANGLER_DOCKER_HOST` env var (shell) | `export WRANGLER_DOCKER_HOST="unix:///..."` | No file changes | Must be set in every shell session |
 | `DOCKER_HOST` env var | `export DOCKER_HOST="unix:///..."` | No file changes | **Breaks `docker build`** -- changes Docker context for all commands |
 | `wrangler.jsonc` config | `"container_engine": "unix:///..."` | Self-documenting config | **Does not work** -- Vite plugin overwrites it |
@@ -216,7 +227,8 @@ Two bugs should be reported to Cloudflare:
 
 | File | Lines | Role |
 |------|-------|------|
-| `package.json` | dev script | Fix location -- added `WRANGLER_DOCKER_HOST` env var |
+| `package.json` | dev script | Runs portable launcher (`tsx scripts/dev.ts`) |
+| `scripts/dev.ts` | full file | Detects local socket path and sets `WRANGLER_DOCKER_HOST` for Vite |
 | `node_modules/@cloudflare/vite-plugin/dist/index.mjs` | 15247-15271, 15557, 15705 | Vite plugin's buggy `getDockerSocketFromContext()` + unconditional overwrite |
 | `node_modules/wrangler/wrangler-dist/cli.js` | 34941-34971 | Wrangler's copy of the same bug |
 | `node_modules/miniflare/dist/src/index.js` | 52687-52695 | `getContainerEngine()` -- passes socket path to workerd |
