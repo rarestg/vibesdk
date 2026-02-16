@@ -21,6 +21,7 @@ import { getSandboxService } from '../../../services/sandbox/factory';
 import { validateAndCleanBootstrapCommands } from 'worker/agents/utils/common';
 import { DeploymentTarget } from '../../core/types';
 import { BaseProjectState } from '../../core/state';
+import { AppError, AppErrorType } from '../../../utils/ErrorHandling';
 
 // Sandbox SDK internal retry window is 120s; per-attempt timeout must exceed it
 const PER_ATTEMPT_TIMEOUT_MS = 150000; // 150 seconds (sandbox 120s + 30s margin)
@@ -30,6 +31,7 @@ const HEALTH_CHECK_INTERVAL_MS = 30000;
 // Circuit breaker: stop hammering sandbox after repeated startup failures
 const CIRCUIT_BREAKER_THRESHOLD = 5; // consecutive failures before cooldown
 const CIRCUIT_BREAKER_COOLDOWN_MS = 60000; // 60 second cooldown
+const STALE_DEPLOYMENT_LOOP_ERROR = 'Deployment loop superseded by newer deployment';
 
 /**
  * Manages deployment operations for sandbox instances
@@ -363,8 +365,14 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
       );
       return result;
     } catch (error) {
-      // Master timeout reached - all retries exhausted
-      logger.error('Deployment permanently failed after master timeout:', error);
+      if (error instanceof AppError && error.type === AppErrorType.CONFLICT_ERROR) {
+        logger.info('Deployment loop superseded by newer deployment, exiting current loop', {
+          error: error.message,
+        });
+      } else {
+        // Master timeout reached - all retries exhausted
+        logger.error('Deployment permanently failed after master timeout:', error);
+      }
       return null;
     } finally {
       this.currentDeploymentPromise = null;
@@ -388,16 +396,24 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
     let attempt = 0;
     const maxAttemptsBeforeSessionReset = 3;
     const myGeneration = this.deploymentGeneration;
-
-    while (true) {
-      // Check if this loop has been superseded by a newer deployment
+    const throwIfStale = (phase: 'pre_attempt' | 'post_cooldown' | 'post_result'): void => {
       if (this.deploymentGeneration !== myGeneration) {
         logger.info('Stale deployment loop detected, exiting', {
           myGeneration,
           currentGeneration: this.deploymentGeneration,
+          phase,
         });
-        throw new Error('Deployment loop superseded by newer deployment');
+        throw new AppError(AppErrorType.CONFLICT_ERROR, STALE_DEPLOYMENT_LOOP_ERROR, 409, {
+          myGeneration,
+          currentGeneration: this.deploymentGeneration,
+          phase,
+        });
       }
+    };
+
+    while (true) {
+      // Check if this loop has been superseded by a newer deployment
+      throwIfStale('pre_attempt');
 
       // Circuit breaker: wait out cooldown if too many consecutive startup failures
       if (Date.now() < this.circuitBreakerCooldownUntil) {
@@ -407,14 +423,18 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
           consecutiveFailures: this.consecutiveStartupFailures,
         });
         await new Promise((resolve) => setTimeout(resolve, remainingMs));
+        // Cooldown sleep can outlive this generation; check again before attempting deploy.
+        throwIfStale('post_cooldown');
       }
 
       attempt++;
+      const attemptNumber = attempt;
+      let result: DeploymentResult | null = null;
       let deployPromise: Promise<DeploymentResult> | null = null;
       let attemptTimedOut = false;
       let sessionResetForAttempt = false;
 
-      logger.info(`Deployment attempt ${attempt}`, { sessionId: this.getSessionId() });
+      logger.info(`Deployment attempt ${attemptNumber}`, { sessionId: this.getSessionId() });
 
       try {
         callbacks?.onStarted?.({
@@ -430,62 +450,38 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
           clearLogs,
         });
 
-        const result = await this.withTimeout(
+        result = await this.withTimeout(
           deployPromise,
           PER_ATTEMPT_TIMEOUT_MS,
-          `Deployment attempt ${attempt} timed out`,
+          `Deployment attempt ${attemptNumber} timed out`,
           () => {
             attemptTimedOut = true;
-            logger.warn(`Deployment attempt ${attempt} exceeded timeout; resetting sessionId to isolate retry`);
+            logger.warn(`Deployment attempt ${attemptNumber} exceeded timeout; resetting sessionId to isolate retry`);
             if (!sessionResetForAttempt) {
               this.resetSessionId();
               sessionResetForAttempt = true;
             }
           },
         );
-
-        // Success - reset circuit breaker
-        this.consecutiveStartupFailures = 0;
-
-        // Start health check and return
-        if (result.redeployed || this.healthCheckInterval === null) {
-          this.startHealthCheckInterval(result.sandboxInstanceId);
-          await this.executeSetupCommands(result.sandboxInstanceId, undefined, callbacks?.onAfterSetupCommands);
-        }
-
-        const preview = {
-          runId: result.sandboxInstanceId,
-          previewURL: result.previewURL,
-          tunnelURL: result.tunnelURL,
-        };
-
-        callbacks?.onCompleted?.({
-          message: 'Deployment completed',
-          instanceId: preview.runId,
-          previewURL: preview.previewURL ?? '',
-          tunnelURL: preview.tunnelURL ?? '',
-        });
-
-        logger.info('Deployment succeeded', { attempt, sessionId: this.getSessionId() });
-        return preview;
       } catch (error) {
-        logger.warn(`Deployment attempt ${attempt} failed:`, error);
+        logger.warn(`Deployment attempt ${attemptNumber} failed:`, error);
 
         const errorMsg = error instanceof Error ? error.message : String(error);
 
         // Log late completion of timed-out attempts for diagnostics
         if (attemptTimedOut && deployPromise) {
+          const timedOutAttempt = attemptNumber;
           void deployPromise
             .then((lateResult) => {
               logger.warn('Timed-out deployment attempt completed after timeout and was ignored', {
-                attempt,
+                attempt: timedOutAttempt,
                 staleInstanceId: lateResult.sandboxInstanceId,
                 stalePreviewURL: lateResult.previewURL,
               });
             })
             .catch((lateError) => {
               logger.warn('Timed-out deployment attempt failed after timeout', {
-                attempt,
+                attempt: timedOutAttempt,
                 error: lateError instanceof Error ? lateError.message : String(lateError),
               });
             });
@@ -505,6 +501,9 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
               cooldownMs: CIRCUIT_BREAKER_COOLDOWN_MS,
             });
           }
+        } else {
+          // Non-startup errors break the startup-failure streak.
+          this.consecutiveStartupFailures = 0;
         }
 
         // Handle specific errors that require session reset (guarded per-attempt)
@@ -521,8 +520,8 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
         }
 
         // After consecutive failures, reset session to get fresh sandbox
-        if (!sessionResetForAttempt && attempt % maxAttemptsBeforeSessionReset === 0) {
-          logger.warn(`${attempt} consecutive failures, resetting sessionId for fresh sandbox`);
+        if (!sessionResetForAttempt && attemptNumber % maxAttemptsBeforeSessionReset === 0) {
+          logger.warn(`${attemptNumber} consecutive failures, resetting sessionId for fresh sandbox`);
           this.resetSessionId();
           sessionResetForAttempt = true;
         }
@@ -534,14 +533,47 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
         });
 
         callbacks?.onError?.({
-          error: `Deployment attempt ${attempt} failed: ${errorMsg}`,
+          error: `Deployment attempt ${attemptNumber} failed: ${errorMsg}`,
         });
 
         // Exponential backoff before retry (capped at 30 seconds)
-        const backoffMs = Math.min(1000 * Math.pow(2, Math.min(attempt - 1, 5)), 30000);
+        const backoffMs = Math.min(1000 * Math.pow(2, Math.min(attemptNumber - 1, 5)), 30000);
         logger.info(`Retrying deployment in ${backoffMs}ms...`);
         await new Promise((resolve) => setTimeout(resolve, backoffMs));
+        continue;
       }
+
+      // Successful result can still be stale if a newer deployment superseded this loop while waiting.
+      throwIfStale('post_result');
+
+      if (!result) {
+        throw new AppError(AppErrorType.INTERNAL_ERROR, 'Deployment result missing after successful attempt', 500);
+      }
+
+      // Success - reset circuit breaker
+      this.consecutiveStartupFailures = 0;
+
+      // Start health check and return
+      if (result.redeployed || this.healthCheckInterval === null) {
+        this.startHealthCheckInterval(result.sandboxInstanceId);
+        await this.executeSetupCommands(result.sandboxInstanceId, undefined, callbacks?.onAfterSetupCommands);
+      }
+
+      const preview = {
+        runId: result.sandboxInstanceId,
+        previewURL: result.previewURL,
+        tunnelURL: result.tunnelURL,
+      };
+
+      callbacks?.onCompleted?.({
+        message: 'Deployment completed',
+        instanceId: preview.runId,
+        previewURL: preview.previewURL ?? '',
+        tunnelURL: preview.tunnelURL ?? '',
+      });
+
+      logger.info('Deployment succeeded', { attempt: attemptNumber, sessionId: this.getSessionId() });
+      return preview;
     }
   }
 
