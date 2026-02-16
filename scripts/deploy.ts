@@ -129,8 +129,17 @@ class CloudflareDeploymentManager {
       this.isSignalCleanupInProgress = true;
       console.log(`\n🛑 Received ${signal}, performing cleanup...`);
 
-      try {
-        // Restore conflicting vars using existing restoration method
+      const runCleanupStep = async (stepName: string, step: () => Promise<void> | void): Promise<void> => {
+        try {
+          await step();
+        } catch (error) {
+          console.error(
+            `❌ Cleanup step failed (${stepName}): ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      };
+
+      await runCleanupStep('wrangler config restoration', async () => {
         if (this.conflictingVarsForCleanup) {
           console.log('🔄 Restoring original wrangler.jsonc configuration...');
           await this.restoreOriginalVars(this.conflictingVarsForCleanup);
@@ -138,7 +147,9 @@ class CloudflareDeploymentManager {
         } else {
           console.log('ℹ️  No configuration changes to restore');
         }
+      });
 
+      await runCleanupStep('dockerfile local platform restoration', () => {
         if (this.originalDockerfileContentForCleanup) {
           console.log('🔄 Restoring local Dockerfile platform flags...');
           this.restoreDockerfileLocalFlags(this.originalDockerfileContentForCleanup);
@@ -146,9 +157,7 @@ class CloudflareDeploymentManager {
         } else {
           console.log('ℹ️  No local Dockerfile changes to restore');
         }
-      } catch (error) {
-        console.error(`❌ Error during cleanup: ${error instanceof Error ? error.message : String(error)}`);
-      }
+      });
 
       console.log('👋 Cleanup completed. Exiting...');
       process.exit(1);
