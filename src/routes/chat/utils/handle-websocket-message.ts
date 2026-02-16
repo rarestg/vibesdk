@@ -44,6 +44,8 @@ const isPhasicState = (state: AgentState): state is PhasicState => {
   return false;
 };
 
+const PREVIEW_DEPLOY_REQUEST_TIMEOUT_MS = 30000;
+
 export interface HandleMessageDeps {
   // State setters
   setFiles: React.Dispatch<React.SetStateAction<FileType[]>>;
@@ -112,6 +114,8 @@ export interface HandleMessageDeps {
     source?: string;
   }) => void;
   onVaultUnlockRequired?: (reason: string) => void;
+  previewDeployInFlightRef: React.MutableRefObject<boolean>;
+  previewDeployRequestStartedAtRef: React.MutableRefObject<number | null>;
 }
 
 export function createWebSocketMessageHandler(deps: HandleMessageDeps) {
@@ -129,9 +133,6 @@ export function createWebSocketMessageHandler(deps: HandleMessageDeps) {
 
   // Blueprint chunk parser (maintained across chunks)
   let blueprintParser: ReturnType<typeof createRepairingJSONParser> | null = null;
-
-  // Guard against duplicate preview deploy requests during reconnect/state transitions
-  let previewDeployInFlight = false;
 
   return (websocket: WebSocket, message: WebSocketMessage) => {
     const {
@@ -175,7 +176,22 @@ export function createWebSocketMessageHandler(deps: HandleMessageDeps) {
       onDebugMessage,
       onTerminalMessage,
       clearDeploymentTimeout,
+      previewDeployInFlightRef,
+      previewDeployRequestStartedAtRef,
     } = deps;
+
+    const resetStalePreviewDeployGuard = (context: string) => {
+      if (!previewDeployInFlightRef.current || previewDeployRequestStartedAtRef.current === null) {
+        return;
+      }
+
+      const ageMs = Date.now() - previewDeployRequestStartedAtRef.current;
+      if (ageMs > PREVIEW_DEPLOY_REQUEST_TIMEOUT_MS) {
+        logger.warn('Resetting stale preview deploy guard', { context, ageMs });
+        previewDeployInFlightRef.current = false;
+        previewDeployRequestStartedAtRef.current = null;
+      }
+    };
 
     // Log messages except for frequent ones
     if (message.type !== 'file_chunk_generated' && message.type !== 'cf_agent_state' && message.type.length <= 50) {
@@ -319,10 +335,14 @@ export function createWebSocketMessageHandler(deps: HandleMessageDeps) {
 
           if (state.generatedFilesMap && Object.keys(state.generatedFilesMap).length > 0) {
             updateStage('code', { status: 'completed' });
-            if (urlChatId !== 'new' && !previewDeployInFlight) {
+            resetStalePreviewDeployGuard('agent_connected');
+            if (urlChatId !== 'new' && !previewDeployInFlightRef.current) {
               logger.debug('Requesting preview deployment for existing chat with files');
-              previewDeployInFlight = true;
-              sendWebSocketMessage(websocket, 'preview');
+              const didSend = sendWebSocketMessage(websocket, 'preview');
+              if (didSend) {
+                previewDeployInFlightRef.current = true;
+                previewDeployRequestStartedAtRef.current = Date.now();
+              }
             }
           }
 
@@ -392,10 +412,14 @@ export function createWebSocketMessageHandler(deps: HandleMessageDeps) {
             if (state.generatedFilesMap && Object.keys(state.generatedFilesMap).length > 0) {
               updateStage('code', { status: 'completed' });
 
-              if (!previewUrl && !previewDeployInFlight) {
+              resetStalePreviewDeployGuard('cf_agent_state');
+              if (!previewUrl && !previewDeployInFlightRef.current) {
                 logger.debug('Generated files exist but no preview URL - auto-deploying preview');
-                previewDeployInFlight = true;
-                sendWebSocketMessage(websocket, 'preview');
+                const didSend = sendWebSocketMessage(websocket, 'preview');
+                if (didSend) {
+                  previewDeployInFlightRef.current = true;
+                  previewDeployRequestStartedAtRef.current = Date.now();
+                }
               }
             }
           }
@@ -623,12 +647,15 @@ export function createWebSocketMessageHandler(deps: HandleMessageDeps) {
       }
 
       case 'deployment_started': {
+        previewDeployInFlightRef.current = true;
+        previewDeployRequestStartedAtRef.current = null;
         setIsPreviewDeploying(true);
         break;
       }
 
       case 'deployment_completed': {
-        previewDeployInFlight = false;
+        previewDeployInFlightRef.current = false;
+        previewDeployRequestStartedAtRef.current = null;
         setIsPreviewDeploying(false);
         const finalPreviewURL = getPreviewUrl(message.previewURL, message.tunnelURL);
         setPreviewUrl(finalPreviewURL);
@@ -636,7 +663,9 @@ export function createWebSocketMessageHandler(deps: HandleMessageDeps) {
       }
 
       case 'deployment_failed': {
-        previewDeployInFlight = false;
+        previewDeployInFlightRef.current = false;
+        previewDeployRequestStartedAtRef.current = null;
+        setIsPreviewDeploying(false);
         toast.error(message.error);
         break;
       }
