@@ -1302,34 +1302,52 @@ export class SandboxSdkClient extends BaseSandboxService {
           let shouldRestartTunnel = !tunnelHealthy;
           if (!tunnelHealthy && tunnelProcessRunning && !hasTunnelUrl) {
             const now = Date.now();
-            const pendingSinceMs = metadata.tunnelUrlPendingSince ? Date.parse(metadata.tunnelUrlPendingSince) : NaN;
-            const hasValidPendingSince = Number.isFinite(pendingSinceMs);
-            const pendingDurationMs = hasValidPendingSince ? now - pendingSinceMs : 0;
-            const pendingStalled = hasValidPendingSince && pendingDurationMs >= TUNNEL_URL_PENDING_TIMEOUT_MS;
+            const latestMetadata = (await this.getInstanceMetadata(instanceId)) ?? metadata;
+            const latestHasTunnelUrl =
+              typeof latestMetadata.tunnelURL === 'string' && latestMetadata.tunnelURL.trim() !== '';
 
-            if (pendingStalled) {
-              this.logger.warn('Tunnel URL detection stalled, restarting tunnel process', {
-                instanceId,
-                tunnelProcessId: metadata.tunnelProcessId,
-                pendingDurationMs,
-                timeoutMs: TUNNEL_URL_PENDING_TIMEOUT_MS,
-              });
-              shouldRestartTunnel = true;
-            } else {
-              if (!metadata.tunnelUrlPendingSince || !hasValidPendingSince) {
+            if (latestHasTunnelUrl) {
+              metadata = latestMetadata;
+              tunnelHealthy = true;
+              shouldRestartTunnel = false;
+              if (metadata.tunnelUrlPendingSince) {
                 metadata = {
                   ...metadata,
-                  tunnelUrlPendingSince: new Date(now).toISOString(),
+                  tunnelUrlPendingSince: undefined,
                 };
                 await this.storeInstanceMetadata(instanceId, metadata);
               }
+            } else {
+              metadata = latestMetadata;
+              const pendingSinceMs = metadata.tunnelUrlPendingSince ? Date.parse(metadata.tunnelUrlPendingSince) : NaN;
+              const hasValidPendingSince = Number.isFinite(pendingSinceMs);
+              const pendingDurationMs = hasValidPendingSince ? now - pendingSinceMs : 0;
+              const pendingStalled = hasValidPendingSince && pendingDurationMs >= TUNNEL_URL_PENDING_TIMEOUT_MS;
 
-              pending = true;
-              shouldRestartTunnel = false;
-              this.logger.info('Tunnel process running without URL; waiting for async URL detection', {
-                instanceId,
-                tunnelProcessId: metadata.tunnelProcessId,
-              });
+              if (pendingStalled) {
+                this.logger.warn('Tunnel URL detection stalled, restarting tunnel process', {
+                  instanceId,
+                  tunnelProcessId: metadata.tunnelProcessId,
+                  pendingDurationMs,
+                  timeoutMs: TUNNEL_URL_PENDING_TIMEOUT_MS,
+                });
+                shouldRestartTunnel = true;
+              } else {
+                if (!metadata.tunnelUrlPendingSince || !hasValidPendingSince) {
+                  metadata = {
+                    ...metadata,
+                    tunnelUrlPendingSince: new Date(now).toISOString(),
+                  };
+                  await this.storeInstanceMetadata(instanceId, metadata);
+                }
+
+                pending = true;
+                shouldRestartTunnel = false;
+                this.logger.info('Tunnel process running without URL; waiting for async URL detection', {
+                  instanceId,
+                  tunnelProcessId: metadata.tunnelProcessId,
+                });
+              }
             }
           } else if (metadata.tunnelUrlPendingSince) {
             metadata = {
@@ -1348,6 +1366,22 @@ export class SandboxSdkClient extends BaseSandboxService {
 
             if (metadata.allocatedPort) {
               try {
+                if (metadata.tunnelProcessId) {
+                  try {
+                    await this.getSandbox().killProcess(metadata.tunnelProcessId);
+                    this.logger.info('Stopped previous tunnel process before restart', {
+                      instanceId,
+                      tunnelProcessId: metadata.tunnelProcessId,
+                    });
+                  } catch (stopError) {
+                    this.logger.warn('Failed to stop previous tunnel process before restart', {
+                      instanceId,
+                      tunnelProcessId: metadata.tunnelProcessId,
+                      error: stopError instanceof Error ? stopError.message : String(stopError),
+                    });
+                  }
+                }
+
                 const previousTunnelUrl = metadata.tunnelURL;
                 const restartedTunnel = await this.startCloudflaredTunnel(instanceId, metadata.allocatedPort, {
                   waitForUrl: false,

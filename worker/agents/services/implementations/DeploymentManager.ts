@@ -841,16 +841,26 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
     const logger = this.getLog();
     const client = this.getClient();
     const deadline = Date.now() + PREVIEW_URL_WAIT_TIMEOUT_MS;
+    let consecutiveStatusFailures = 0;
+    let lastStatusError: string | undefined;
 
     while (Date.now() < deadline) {
       const status = await client.getInstanceStatus(instanceId);
       if (!status.success) {
-        logger.warn('Failed to get instance status while waiting for preview URL', {
-          instanceId,
-          error: status.error,
-        });
-        return null;
+        consecutiveStatusFailures++;
+        lastStatusError = status.error;
+        if (consecutiveStatusFailures === 1 || consecutiveStatusFailures % 5 === 0) {
+          logger.warn('Failed to get instance status while waiting for preview URL; retrying', {
+            instanceId,
+            error: status.error,
+            consecutiveFailures: consecutiveStatusFailures,
+          });
+        }
+        await new Promise((resolve) => setTimeout(resolve, PREVIEW_URL_POLL_INTERVAL_MS));
+        continue;
       }
+      consecutiveStatusFailures = 0;
+      lastStatusError = undefined;
 
       if (status.previewURL) {
         return status;
@@ -864,7 +874,12 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
       await new Promise((resolve) => setTimeout(resolve, PREVIEW_URL_POLL_INTERVAL_MS));
     }
 
-    logger.warn('Timed out waiting for preview URL', { instanceId, timeoutMs: PREVIEW_URL_WAIT_TIMEOUT_MS });
+    logger.warn('Timed out waiting for preview URL', {
+      instanceId,
+      timeoutMs: PREVIEW_URL_WAIT_TIMEOUT_MS,
+      lastStatusError,
+      consecutiveStatusFailures,
+    });
     return null;
   }
 
