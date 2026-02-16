@@ -808,7 +808,33 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
       };
     }
 
-    throw new Error(`Failed to create sandbox instance: preview URL not available for ${createResponse.runId}`);
+    const reason = !resolvedStatus
+      ? 'preview_url_wait_timed_out'
+      : !resolvedStatus.success
+        ? 'instance_status_lookup_failed'
+        : resolvedStatus.pending
+          ? 'preview_url_still_pending'
+          : !resolvedStatus.isHealthy
+            ? 'instance_unhealthy_before_preview_ready'
+            : 'preview_url_missing';
+
+    throw new AppError(
+      AppErrorType.EXTERNAL_SERVICE_ERROR,
+      `Failed to create sandbox instance: preview URL not available for ${createResponse.runId}`,
+      502,
+      {
+        runId: createResponse.runId,
+        reason,
+        waitForPreviewTimeoutMs: PREVIEW_URL_WAIT_TIMEOUT_MS,
+        status: resolvedStatus
+          ? {
+              pending: resolvedStatus.pending,
+              isHealthy: resolvedStatus.isHealthy,
+              error: resolvedStatus.error,
+            }
+          : undefined,
+      },
+    );
   }
 
   private async waitForInstancePreview(instanceId: string): Promise<BootstrapStatusResponse | null> {
