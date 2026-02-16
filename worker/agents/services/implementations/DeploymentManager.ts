@@ -212,7 +212,26 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
         const client = this.getClient();
         const status = await client.getInstanceStatus(instanceId);
 
-        if (!status.success || !status.isHealthy) {
+        if (!status.success) {
+          logger.warn(`Instance ${instanceId} unhealthy, triggering redeploy`);
+          this.clearHealthCheckInterval();
+
+          // Trigger redeploy to recover from unhealthy state
+          try {
+            await this.deployToSandbox();
+            logger.info('Instance redeployed successfully after health check failure');
+          } catch (redeployError) {
+            logger.error('Failed to redeploy after health check failure:', redeployError);
+          }
+          return;
+        }
+
+        if (status.pending) {
+          logger.info(`Instance ${instanceId} health check pending: ${status.message || 'waiting for readiness'}`);
+          return;
+        }
+
+        if (!status.isHealthy) {
           logger.warn(`Instance ${instanceId} unhealthy, triggering redeploy`);
           this.clearHealthCheckInterval();
 
@@ -683,7 +702,7 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
     // Check existing instance
     if (sandboxInstanceId) {
       const status = await client.getInstanceStatus(sandboxInstanceId);
-      if (status.success && status.isHealthy) {
+      if (status.success && (status.isHealthy || status.pending)) {
         logger.info(`DEPLOYMENT CHECK PASSED: Instance ${sandboxInstanceId} is running`);
         return {
           sandboxInstanceId,
