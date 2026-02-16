@@ -96,6 +96,8 @@ function getAutoAllocatedSandbox(sessionId: string): string {
 }
 
 export class SandboxSdkClient extends BaseSandboxService {
+  private static readonly BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
   private sandbox: SandboxType;
   private metadataCache = new Map<string, InstanceMetadata>();
   private sessionCache = new Map<string, ExecutionSession>();
@@ -249,9 +251,34 @@ export class SandboxSdkClient extends BaseSandboxService {
   // }
 
   /**
-   * Write multiple files efficiently using a single shell script
-   * Reduces 2N requests to just 2 requests regardless of file count
-   * Uses base64 encoding to handle all content safely
+   * Deterministic UTF-8 to base64 encoder.
+   * Replaces chunked btoa concatenation which could produce corrupt output
+   * at chunk boundaries for multi-byte characters.
+   */
+  private encodeUtf8ToBase64(input: string): string {
+    const bytes = new TextEncoder().encode(input);
+    const output: string[] = [];
+
+    for (let i = 0; i < bytes.length; i += 3) {
+      const byte1 = bytes[i]!;
+      const byte2 = i + 1 < bytes.length ? bytes[i + 1]! : 0;
+      const byte3 = i + 2 < bytes.length ? bytes[i + 2]! : 0;
+
+      const triplet = (byte1 << 16) | (byte2 << 8) | byte3;
+
+      output.push(SandboxSdkClient.BASE64_ALPHABET[(triplet >> 18) & 0x3f]!);
+      output.push(SandboxSdkClient.BASE64_ALPHABET[(triplet >> 12) & 0x3f]!);
+      output.push(i + 1 < bytes.length ? SandboxSdkClient.BASE64_ALPHABET[(triplet >> 6) & 0x3f]! : '=');
+      output.push(i + 2 < bytes.length ? SandboxSdkClient.BASE64_ALPHABET[triplet & 0x3f]! : '=');
+    }
+
+    return output.join('');
+  }
+
+  /**
+   * Write multiple files efficiently using a single shell script.
+   * Uses printf + base64 -d pipeline instead of echo to avoid shell interpretation issues.
+   * Script path is unique per operation to prevent collisions in concurrent writes.
    */
   private async writeFilesViaScript(
     files: TemplateFile[],
@@ -265,32 +292,15 @@ export class SandboxSdkClient extends BaseSandboxService {
     const scriptLines = ['#!/bin/bash'];
 
     for (const { filePath, fileContents } of files) {
-      const utf8Bytes = new TextEncoder().encode(fileContents);
-
-      // Convert bytes to base64 in chunks to avoid stack overflow
-      const chunkSize = 8192;
-      const base64Chunks: string[] = [];
-
-      for (let i = 0; i < utf8Bytes.length; i += chunkSize) {
-        const chunk = utf8Bytes.slice(i, i + chunkSize);
-        // Convert chunk to binary string
-        let binaryString = '';
-        for (let j = 0; j < chunk.length; j++) {
-          binaryString += String.fromCharCode(chunk[j]);
-        }
-        // Encode chunk to base64
-        base64Chunks.push(btoa(binaryString));
-      }
-
-      const base64 = base64Chunks.join('');
+      const base64 = this.encodeUtf8ToBase64(fileContents);
 
       scriptLines.push(
-        `mkdir -p "$(dirname "${filePath}")" && echo '${base64}' | base64 -d > "${filePath}" && echo "OK:${filePath}" || echo "FAIL:${filePath}"`,
+        `mkdir -p "$(dirname "${filePath}")" && printf '%s' '${base64}' | base64 -d > "${filePath}" && echo "OK:${filePath}" || echo "FAIL:${filePath}"`,
       );
     }
 
     const script = scriptLines.join('\n');
-    const scriptPath = '/tmp/batch_write.sh';
+    const scriptPath = `/tmp/batch_write-${generateId()}.sh`;
 
     try {
       // Write script (1 request)
@@ -340,6 +350,12 @@ export class SandboxSdkClient extends BaseSandboxService {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
       }));
+    } finally {
+      try {
+        await session.exec(`rm -f "${scriptPath}"`);
+      } catch (cleanupError) {
+        this.logger.warn('Failed to remove temporary batch write script', cleanupError);
+      }
     }
   }
 
@@ -364,10 +380,13 @@ export class SandboxSdkClient extends BaseSandboxService {
         });
       }
 
+      const failedCount = results.filter((result) => !result.success).length;
+      const isSuccess = failedCount === 0;
+
       return {
-        success: true,
+        success: isSuccess,
         results,
-        message: 'Files written successfully',
+        message: isSuccess ? 'Files written successfully' : `Failed to write ${failedCount}/${results.length} files`,
       };
     } catch (error) {
       this.logger.error('writeFiles', error, { instanceId });
