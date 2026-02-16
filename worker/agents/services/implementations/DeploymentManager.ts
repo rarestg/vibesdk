@@ -384,6 +384,7 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
    * Each attempt has its own timeout. Resets sessionId after consecutive failures.
    * Uses generation tokens to detect and exit stale loops, and a circuit breaker
    * to avoid hammering sandbox during unhealthy periods.
+   * Returns null when this loop is superseded by a newer deployment generation.
    */
   private async executeDeploymentWithRetry(
     files: FileOutputType[],
@@ -391,24 +392,33 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
     commitMessage: string | undefined,
     clearLogs: boolean,
     callbacks?: SandboxDeploymentCallbacks,
-  ): Promise<PreviewType> {
+  ): Promise<PreviewType | null> {
     const logger = this.getLog();
     let attempt = 0;
     const maxAttemptsBeforeSessionReset = 3;
     const myGeneration = this.deploymentGeneration;
-    const throwIfStale = (phase: 'pre_attempt' | 'post_cooldown' | 'post_result'): void => {
+    const isStaleGeneration = (
+      phase: 'pre_attempt' | 'post_cooldown' | 'attempt_timeout' | 'catch' | 'post_result',
+    ): boolean => {
       if (this.deploymentGeneration !== myGeneration) {
         logger.info('Stale deployment loop detected, exiting', {
           myGeneration,
           currentGeneration: this.deploymentGeneration,
           phase,
         });
-        throw new AppError(AppErrorType.CONFLICT_ERROR, STALE_DEPLOYMENT_LOOP_ERROR, 409, {
-          myGeneration,
-          currentGeneration: this.deploymentGeneration,
-          phase,
-        });
+        return true;
       }
+      return false;
+    };
+    const throwIfStale = (phase: 'pre_attempt' | 'post_cooldown' | 'post_result'): void => {
+      if (!isStaleGeneration(phase)) {
+        return;
+      }
+      throw new AppError(AppErrorType.CONFLICT_ERROR, STALE_DEPLOYMENT_LOOP_ERROR, 409, {
+        myGeneration,
+        currentGeneration: this.deploymentGeneration,
+        phase,
+      });
     };
 
     while (true) {
@@ -456,6 +466,9 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
           `Deployment attempt ${attemptNumber} timed out`,
           () => {
             attemptTimedOut = true;
+            if (isStaleGeneration('attempt_timeout')) {
+              return;
+            }
             logger.warn(`Deployment attempt ${attemptNumber} exceeded timeout; resetting sessionId to isolate retry`);
             if (!sessionResetForAttempt) {
               this.resetSessionId();
@@ -467,6 +480,9 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
         logger.warn(`Deployment attempt ${attemptNumber} failed:`, error);
 
         const errorMsg = error instanceof Error ? error.message : String(error);
+        if (isStaleGeneration('catch')) {
+          return null;
+        }
 
         // Log late completion of timed-out attempts for diagnostics
         if (attemptTimedOut && deployPromise) {
