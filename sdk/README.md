@@ -6,12 +6,12 @@ Official TypeScript SDK for the VibeSDK platform - build and deploy fullstack ap
 
 Works in any JavaScript runtime with native WebSocket support:
 
-| Runtime | Support |
-|---------|---------|
+| Runtime            | Support          |
+| ------------------ | ---------------- |
 | Cloudflare Workers | Native WebSocket |
-| Browsers | Native WebSocket |
-| Bun | Native WebSocket |
-| Node.js 22+ | Native WebSocket |
+| Browsers           | Native WebSocket |
+| Bun                | Native WebSocket |
+| Node.js 22+        | Native WebSocket |
 
 ## Installation
 
@@ -45,10 +45,10 @@ session.close();
 
 ## Authentication
 
-| Method | Use Case |
-|--------|----------|
+| Method   | Use Case                                                    |
+| -------- | ----------------------------------------------------------- |
 | `apiKey` | Recommended. Automatically exchanged for a short-lived JWT. |
-| `token` | Use when you already have a JWT access token. |
+| `token`  | Use when you already have a JWT access token.               |
 
 ```ts
 // Using API key (recommended)
@@ -66,11 +66,11 @@ const client = new PhasicClient({
 
 ## Clients
 
-| Client | Default Behavior |
-|--------|------------------|
-| `VibeClient` | No default - specify `behaviorType` in build options |
-| `PhasicClient` | `behaviorType: 'phasic'` (phase-based generation) |
-| `AgenticClient` | `behaviorType: 'agentic'` (autonomous agent) |
+| Client          | Default Behavior                                     |
+| --------------- | ---------------------------------------------------- |
+| `VibeClient`    | No default - specify `behaviorType` in build options |
+| `PhasicClient`  | `behaviorType: 'phasic'` (phase-based generation)    |
+| `AgenticClient` | `behaviorType: 'agentic'` (autonomous agent)         |
 
 All clients share the same API. The specialized clients simply set a default `behaviorType`.
 
@@ -97,6 +97,7 @@ const session = await client.build('Build a weather dashboard', {
 ### `client.connect(agentId)`
 
 Connect to an existing app session. State is automatically restored from the agent, including:
+
 - Phase timeline with completion status
 - Generated files
 - Agent metadata (query, projectName, behaviorType, etc.)
@@ -141,26 +142,26 @@ The `BuildSession` object provides real-time interaction with code generation.
 
 ### Properties
 
-| Property | Description |
-|----------|-------------|
-| `agentId` | Unique identifier for this session |
-| `behaviorType` | `'phasic'` or `'agentic'` |
-| `projectType` | Type of project being built |
+| Property       | Description                        |
+| -------------- | ---------------------------------- |
+| `agentId`      | Unique identifier for this session |
+| `behaviorType` | `'phasic'` or `'agentic'`          |
+| `projectType`  | Type of project being built        |
 
 ### Commands
 
 ```ts
-session.startGeneration();      // Start code generation
-session.stop();                 // Stop generation
-session.resume();               // Resume generation
-session.deployPreview();        // Deploy to preview environment
-session.deployCloudflare();     // Deploy to Cloudflare Workers
-session.clearConversation();    // Clear conversation history
-session.close();                // Close the session
+session.startGeneration(); // Start code generation
+session.stop(); // Stop generation
+session.resume(); // Resume generation
+session.deployPreview(); // Deploy to preview environment
+session.deployCloudflare(); // Deploy to Cloudflare Workers
+session.clearConversation(); // Clear conversation history
+session.close(); // Close the session
 
 // Send follow-up message
 session.followUp('Add dark mode support', {
-  images: [{ base64: '...', mimeType: 'image/png' }],  // Optional
+  images: [{ base64: '...', mimeType: 'image/png' }], // Optional
 });
 ```
 
@@ -217,10 +218,10 @@ const msg = await session.waitForMessageType('generation_complete', 60_000);
 ### File Access
 
 ```ts
-const paths = session.files.listPaths();        // ['src/App.tsx', ...]
+const paths = session.files.listPaths(); // ['src/App.tsx', ...]
 const content = session.files.read('src/App.tsx');
-const snapshot = session.files.snapshot();      // { 'src/App.tsx': '...', ... }
-const tree = session.files.tree();              // Nested file tree structure
+const snapshot = session.files.snapshot(); // { 'src/App.tsx': '...', ... }
+const tree = session.files.tree(); // Nested file tree structure
 ```
 
 ### Phase Timeline
@@ -236,7 +237,7 @@ const phases = session.phases.list();
 const current = session.phases.current();
 if (current) {
   console.log(`Working on: ${current.name}`);
-  console.log(`Status: ${current.status}`);  // 'generating' | 'implementing' | 'validating'
+  console.log(`Status: ${current.status}`); // 'generating' | 'implementing' | 'validating'
 }
 
 // Get completed phases
@@ -264,9 +265,9 @@ The `onChange` callback receives a `PhaseTimelineEvent`:
 
 ```ts
 type PhaseTimelineEvent = {
-  type: 'added' | 'updated';  // New phase vs status/file change
-  phase: PhaseInfo;           // The affected phase
-  allPhases: PhaseInfo[];     // All phases after this change
+  type: 'added' | 'updated'; // New phase vs status/file change
+  phase: PhaseInfo; // The affected phase
+  allPhases: PhaseInfo[]; // All phases after this change
 };
 ```
 
@@ -274,17 +275,17 @@ Each phase contains:
 
 ```ts
 type PhaseInfo = {
-  id: string;           // 'phase-0', 'phase-1', etc.
-  name: string;         // 'Core Setup', 'Authentication', etc.
-  description: string;  // What the phase accomplishes
-  status: PhaseStatus;  // 'pending' | 'generating' | 'implementing' | 'validating' | 'completed' | 'cancelled'
-  files: PhaseFile[];   // Files in this phase
+  id: string; // 'phase-0', 'phase-1', etc.
+  name: string; // 'Core Setup', 'Authentication', etc.
+  description: string; // What the phase accomplishes
+  status: PhaseStatus; // 'pending' | 'generating' | 'implementing' | 'validating' | 'completed' | 'cancelled'
+  files: PhaseFile[]; // Files in this phase
 };
 
 type PhaseFile = {
-  path: string;         // 'src/App.tsx'
-  purpose: string;      // 'Main application component'
-  status: PhaseFileStatus;  // 'pending' | 'generating' | 'completed' | 'cancelled'
+  path: string; // 'src/App.tsx'
+  purpose: string; // 'Main application component'
+  status: PhaseFileStatus; // 'pending' | 'generating' | 'completed' | 'cancelled'
 };
 ```
 
@@ -293,20 +294,20 @@ type PhaseFile = {
 ```ts
 // Current state
 const state = session.state.get();
-console.log(state.connection);  // 'disconnected' | 'connecting' | 'connected'
-console.log(state.generation);  // { status: 'idle' | 'running' | 'stopped' | 'complete', ... }
-console.log(state.phase);       // { status: 'idle' | 'generating' | ... }
-console.log(state.preview);     // Preview deployment state
-console.log(state.cloudflare);  // Cloudflare deployment state
+console.log(state.connection); // 'disconnected' | 'connecting' | 'connected'
+console.log(state.generation); // { status: 'idle' | 'running' | 'stopped' | 'complete', ... }
+console.log(state.phase); // { status: 'idle' | 'generating' | ... }
+console.log(state.preview); // Preview deployment state
+console.log(state.cloudflare); // Cloudflare deployment state
 
 // Phase timeline (array of all phases)
-console.log(state.phases);      // [{ id, name, status, files }, ...]
+console.log(state.phases); // [{ id, name, status, files }, ...]
 
 // Agent metadata (seeded from agent_connected)
-console.log(state.behaviorType);      // 'phasic' | 'agentic'
-console.log(state.projectType);       // 'app' | 'workflow' | etc.
-console.log(state.query);             // Original user prompt
-console.log(state.projectName);       // Project name from blueprint
+console.log(state.behaviorType); // 'phasic' | 'agentic'
+console.log(state.projectType); // 'app' | 'workflow' | etc.
+console.log(state.query); // Original user prompt
+console.log(state.projectName); // Project name from blueprint
 console.log(state.shouldBeGenerating); // Whether agent is actively generating
 
 // Subscribe to changes
@@ -328,10 +329,10 @@ Connections automatically reconnect with exponential backoff.
 // Custom retry config
 await session.connect({
   retry: {
-    enabled: true,        // Default: true
+    enabled: true, // Default: true
     initialDelayMs: 1000, // Default: 1000
-    maxDelayMs: 30000,    // Default: 30000
-    maxRetries: 10,       // Default: Infinity
+    maxDelayMs: 30000, // Default: 30000
+    maxRetries: 10, // Default: Infinity
   },
 });
 
@@ -348,10 +349,10 @@ const client = new PhasicClient({
   baseUrl: 'https://build.cloudflare.dev',
   apiKey: 'vibe_xxx',
   retry: {
-    enabled: true,        // Default: true
+    enabled: true, // Default: true
     initialDelayMs: 1000, // Default: 1000
-    maxDelayMs: 10000,    // Default: 10000
-    maxRetries: 3,        // Default: 3
+    maxDelayMs: 10000, // Default: 10000
+    maxRetries: 3, // Default: 3
   },
 });
 ```
@@ -414,7 +415,7 @@ import type {
   SessionState,
   SessionFiles,
   SessionPhases,
-  
+
   // Phase Timeline
   PhaseInfo,
   PhaseFile,
@@ -423,7 +424,7 @@ import type {
   PhaseEventType,
   PhaseTimelineEvent,
   PhaseTimelineChangeType,
-  
+
   // API
   ApiResponse,
   AppDetails,

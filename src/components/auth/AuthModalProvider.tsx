@@ -63,11 +63,14 @@ export function AuthModalProvider({ children }: AuthModalProviderProps) {
     }
   }, [isAuthenticated, pendingAction, isAuthModalOpen, hideAuthModal]);
 
-  const handleLogin = useCallback((provider: 'google' | 'github', redirectUrl?: string) => {
-    // Use the intended URL if available, otherwise use the provided redirect URL
-    const finalRedirectUrl = intendedUrl || redirectUrl;
-    login(provider, finalRedirectUrl);
-  }, [login, intendedUrl]);
+  const handleLogin = useCallback(
+    (provider: 'google' | 'github', redirectUrl?: string) => {
+      // Use the intended URL if available, otherwise use the provided redirect URL
+      const finalRedirectUrl = intendedUrl || redirectUrl;
+      login(provider, finalRedirectUrl);
+    },
+    [login, intendedUrl],
+  );
 
   // Set up global auth modal trigger for API client
   useEffect(() => {

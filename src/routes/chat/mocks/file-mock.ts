@@ -259,12 +259,12 @@ class ApiClient {
   }
 }
 
-export const apiClient = new ApiClient();`
+export const apiClient = new ApiClient();`,
 };
 
 export function generateMockFiles(): FileType[] {
   const filePaths = Object.keys(mockFileContents);
-  
+
   return filePaths.map((filePath, index) => ({
     filePath: filePath,
     fileContents: mockFileContents[filePath as keyof typeof mockFileContents],
@@ -280,38 +280,45 @@ export function generateLongFileNameMockFiles(): FileType[] {
 import { useState, useEffect, useCallback } from 'react';
 import clsx from 'clsx';
 `;
-    const content = Array.from({ length: Math.max(1, lines - 10) }, (_, i) => 
-      `// Line ${i + 4}: ${fileType === 'tsx' ? 'Component logic' : 'Business logic'} implementation`
+    const content = Array.from(
+      { length: Math.max(1, lines - 10) },
+      (_, i) => `// Line ${i + 4}: ${fileType === 'tsx' ? 'Component logic' : 'Business logic'} implementation`,
     ).join('\n');
-    const footer = fileType === 'tsx' 
-      ? `\nexport default function Component() {\n  return <div>Component</div>;\n}` 
-      : `\nexport { default };`;
+    const footer =
+      fileType === 'tsx'
+        ? `\nexport default function Component() {\n  return <div>Component</div>;\n}`
+        : `\nexport { default };`;
     return imports + content + footer;
   };
 
   return [
     {
-      filePath: 'src/components/very-complex-and-extremely-long-named-components/super-detailed-user-interface-elements/advanced-dashboard-analytics-visualization-component.tsx',
+      filePath:
+        'src/components/very-complex-and-extremely-long-named-components/super-detailed-user-interface-elements/advanced-dashboard-analytics-visualization-component.tsx',
       fileContents: generateContent(15234, 'tsx'), // Very high line count
       isGenerating: false,
     },
     {
-      filePath: 'src/features/user-management/authentication/multi-factor-authentication/providers/oauth/google/configuration-and-settings.ts',
+      filePath:
+        'src/features/user-management/authentication/multi-factor-authentication/providers/oauth/google/configuration-and-settings.ts',
       fileContents: generateContent(8947, 'ts'),
       isGenerating: false,
     },
     {
-      filePath: 'src/utils/database/migrations/version-2024-07-17/add-user-preferences-and-advanced-settings-with-json-schema-validation.sql',
+      filePath:
+        'src/utils/database/migrations/version-2024-07-17/add-user-preferences-and-advanced-settings-with-json-schema-validation.sql',
       fileContents: generateContent(2456, 'sql'),
       isGenerating: true,
     },
     {
-      filePath: 'src/api/endpoints/v2/external-integrations/third-party-services/payment-processing/stripe/webhooks/subscription-management.ts',
+      filePath:
+        'src/api/endpoints/v2/external-integrations/third-party-services/payment-processing/stripe/webhooks/subscription-management.ts',
       fileContents: generateContent(12589, 'ts'),
       isGenerating: false,
     },
     {
-      filePath: 'src/types/interfaces/backend-api-contracts/user-generated-content/comments-and-ratings-system-with-moderation.ts',
+      filePath:
+        'src/types/interfaces/backend-api-contracts/user-generated-content/comments-and-ratings-system-with-moderation.ts',
       fileContents: generateContent(6743, 'ts'),
       isGenerating: false,
     },
@@ -321,7 +328,8 @@ import clsx from 'clsx';
       isGenerating: false,
     },
     {
-      filePath: 'src/extremely-long-path-that-should-definitely-be-truncated-in-the-user-interface/nested/deeply/component.tsx',
+      filePath:
+        'src/extremely-long-path-that-should-definitely-be-truncated-in-the-user-interface/nested/deeply/component.tsx',
       fileContents: generateContent(987, 'tsx'),
       isGenerating: false,
     },
@@ -331,10 +339,11 @@ import clsx from 'clsx';
       isGenerating: true,
     },
     {
-      filePath: 'src/features/advanced-enterprise-level-business-logic/complex-workflow-management/automated-processes/background-job-scheduler.ts',
+      filePath:
+        'src/features/advanced-enterprise-level-business-logic/complex-workflow-management/automated-processes/background-job-scheduler.ts',
       fileContents: generateContent(23847, 'ts'), // Extremely high line count + long name
       isGenerating: true,
-    }
+    },
   ];
 }
 
@@ -348,7 +357,7 @@ export function generateMockFilesForPhases(): FileType[] {
       isGenerating: false,
     },
     {
-      filePath: 'src/components/Input.tsx', 
+      filePath: 'src/components/Input.tsx',
       fileContents: mockFileContents['src/components/Input.tsx'],
       isGenerating: false,
     },
@@ -374,7 +383,7 @@ export interface ApiResponse<T> {
       isGenerating: false,
     },
     {
-      filePath: 'src/hooks/useApi.tsx', 
+      filePath: 'src/hooks/useApi.tsx',
       fileContents: `import { useState, useEffect } from 'react';
 import { apiClient } from '../api/client';
 
@@ -419,7 +428,7 @@ export function Board({ board }: BoardProps) {
   );
 }`,
       isGenerating: true,
-    }
+    },
   ];
 
   return allFiles;

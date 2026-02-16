@@ -15,12 +15,7 @@ export default defineWorkersConfig({
       optimizer: {
         ssr: {
           enabled: true,
-          include: [
-            '@cloudflare/containers',
-            '@cloudflare/sandbox',
-            '@babel/traverse',
-            '@babel/types',
-          ],
+          include: ['@cloudflare/containers', '@cloudflare/sandbox', '@babel/traverse', '@babel/types'],
         },
       },
     },

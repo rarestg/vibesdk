@@ -55,9 +55,7 @@ export function ModelSelector({
   // Filter models based on search
   const filteredModels = useMemo(() => {
     if (!search) return availableModels;
-    return availableModels.filter(model => 
-      model.label.toLowerCase().includes(search.toLowerCase())
-    );
+    return availableModels.filter((model) => model.label.toLowerCase().includes(search.toLowerCase()));
   }, [availableModels, search]);
 
   // Get display name for selected value
@@ -126,9 +124,9 @@ export function ModelSelector({
               className="h-8 border-0 bg-transparent p-0 placeholder:text-text-tertiary focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
             />
           </div>
-          
+
           {/* Scrollable List */}
-          <div 
+          <div
             ref={listRef}
             className="max-h-[300px] overflow-y-auto p-1 scroll-smooth"
             onWheel={(e) => {
@@ -138,11 +136,9 @@ export function ModelSelector({
           >
             {/* No results */}
             {filteredModels.length === 0 && !includeDefaultOption && (
-              <div className="py-6 text-center text-sm text-text-tertiary">
-                No models found.
-              </div>
+              <div className="py-6 text-center text-sm text-text-tertiary">No models found.</div>
             )}
-            
+
             {/* Default option if requested */}
             {includeDefaultOption && (
               <div
@@ -153,22 +149,19 @@ export function ModelSelector({
                   setSearch('');
                 }}
                 className={cn(
-                  "relative flex cursor-pointer select-none items-center justify-between rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-accent hover:text-text-secondary focus:bg-accent focus:text-text-secondary",
-                  value === 'default' && "bg-accent text-text-secondary"
+                  'relative flex cursor-pointer select-none items-center justify-between rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-accent hover:text-text-secondary focus:bg-accent focus:text-text-secondary',
+                  value === 'default' && 'bg-accent text-text-secondary',
                 )}
               >
                 <div className="flex items-center gap-2">
                   <Check
-                    className={cn(
-                      "h-4 w-4 text-text-primary",
-                      value === 'default' ? "opacity-100" : "opacity-0"
-                    )}
+                    className={cn('h-4 w-4 text-text-primary', value === 'default' ? 'opacity-100' : 'opacity-0')}
                   />
                   <span className="font-medium">Use default</span>
                 </div>
               </div>
             )}
-            
+
             {/* Available models */}
             {filteredModels.map((model) => (
               <div
@@ -179,33 +172,29 @@ export function ModelSelector({
                   setSearch('');
                 }}
                 className={cn(
-                  "relative flex cursor-pointer select-none items-center justify-between rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-accent hover:text-text-secondary focus:bg-accent focus:text-text-secondary",
-                  value === model.value && "bg-accent text-text-secondary"
+                  'relative flex cursor-pointer select-none items-center justify-between rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-accent hover:text-text-secondary focus:bg-accent focus:text-text-secondary',
+                  value === model.value && 'bg-accent text-text-secondary',
                 )}
               >
                 <div className="flex items-center gap-2 min-w-0 flex-1">
                   <Check
                     className={cn(
-                      "h-4 w-4 text-text-primary shrink-0",
-                      value === model.value ? "opacity-100" : "opacity-0"
+                      'h-4 w-4 text-text-primary shrink-0',
+                      value === model.value ? 'opacity-100' : 'opacity-0',
                     )}
                   />
                   <span className="truncate">{model.label}</span>
                 </div>
-                <div className="flex items-center gap-1 ml-2 shrink-0">
-                  {getModelBadge(model)}
-                </div>
+                <div className="flex items-center gap-1 ml-2 shrink-0">{getModelBadge(model)}</div>
               </div>
             ))}
           </div>
         </PopoverContent>
       </Popover>
-      
+
       {/* System default display */}
       {systemDefault && (
-        <p className="text-xs text-text-tertiary truncate">
-          🔧 System default: {getModelDisplayName(systemDefault)}
-        </p>
+        <p className="text-xs text-text-tertiary truncate">🔧 System default: {getModelDisplayName(systemDefault)}</p>
       )}
     </div>
   );

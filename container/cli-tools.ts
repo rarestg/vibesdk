@@ -2,9 +2,9 @@
 import { parseArgs } from 'util';
 import { StorageManager } from './storage.js';
 import { ProcessMonitor } from './process-monitor.js';
-import { 
-  ProcessRunnerConfig, 
-  ProcessInfo, 
+import {
+  ProcessRunnerConfig,
+  ProcessInfo,
   MonitoringOptions,
   LogStoreOptions as LogStoreOptionsType,
   ErrorStoreOptions as ErrorStoreOptionsType,
@@ -20,7 +20,7 @@ import {
   DEFAULT_LOG_STORE_OPTIONS,
   getDataDirectory,
   getErrorDbPath,
-  getLogDbPath
+  getLogDbPath,
 } from './types.js';
 
 // Instance ID validation pattern - alphanumeric with dashes and underscores
@@ -61,23 +61,31 @@ class SafeJSON {
   static stringify(data: unknown, space?: number): string {
     try {
       const seen = new WeakSet();
-      const json = JSON.stringify(data, (_key, value) => {
-        if (typeof value === 'object' && value !== null) {
-          if (seen.has(value)) {
-            return '[Circular Reference]';
+      const json = JSON.stringify(
+        data,
+        (_key, value) => {
+          if (typeof value === 'object' && value !== null) {
+            if (seen.has(value)) {
+              return '[Circular Reference]';
+            }
+            seen.add(value);
           }
-          seen.add(value);
-        }
-        return value;
-      }, space);
+          return value;
+        },
+        space,
+      );
       return json;
     } catch {
       // Fallback for any stringify errors
-      return JSON.stringify({
-        error: 'Failed to serialize data',
-        type: typeof data,
-        string: String(data).substring(0, 200)
-      }, null, space);
+      return JSON.stringify(
+        {
+          error: 'Failed to serialize data',
+          type: typeof data,
+          string: String(data).substring(0, 200),
+        },
+        null,
+        space,
+      );
     }
   }
 
@@ -89,7 +97,7 @@ class SafeJSON {
       return {
         success: false,
         error: 'Invalid JSON format',
-        rawText: text.substring(0, 200)
+        rawText: text.substring(0, 200),
       };
     }
   }
@@ -136,7 +144,7 @@ class OutputFormatter {
     const errorResponse = {
       success: false,
       error,
-      ...additionalData
+      ...additionalData,
     };
     console.log(SafeJSON.stringify(errorResponse, 2));
   }
@@ -144,7 +152,7 @@ class OutputFormatter {
   static formatSuccess(message: string, data?: unknown): void {
     const successResponse: Record<string, unknown> = {
       success: true,
-      message
+      message,
     };
     if (data) {
       successResponse.data = data;
@@ -165,9 +173,9 @@ class OutputFormatter {
       const timestamp = new Date(error.timestamp).toISOString().slice(0, 16).replace('T', ' ');
       const level = `L${error.level}`.padEnd(9);
       const message = error.message.length > 50 ? error.message.substring(0, 47) + '...' : error.message;
-      
+
       console.log(`${timestamp} ${level} ${message}`);
-      
+
       if (error.occurrenceCount > 1) {
         console.log(''.padEnd(30) + `(occurred ${error.occurrenceCount} times)`);
       }
@@ -189,7 +197,7 @@ class OutputFormatter {
       const stream = log.stream.padEnd(7);
       const source = (log.source || 'unknown').padEnd(14);
       const message = log.message.length > 50 ? log.message.substring(0, 47) + '...' : log.message;
-      
+
       console.log(`${timestamp} ${level} ${stream} ${source} ${message}`);
     }
   }
@@ -245,18 +253,18 @@ class ProcessCommands {
         healthCheckInterval: options.healthCheckInterval ?? defaultHealthCheckInterval,
         maxRestarts: options.maxRestarts ?? defaultMaxRestarts,
         restartDelay: options.restartDelay ?? defaultRestartDelay,
-        env: envVars
+        env: envVars,
       };
 
       const errorStorage: ErrorStoreOptionsType = {
         ...DEFAULT_STORAGE_OPTIONS,
         maxErrors: options.maxErrors ?? DEFAULT_STORAGE_OPTIONS.maxErrors,
-        retentionDays: options.retentionDays ?? DEFAULT_STORAGE_OPTIONS.retentionDays
+        retentionDays: options.retentionDays ?? DEFAULT_STORAGE_OPTIONS.retentionDays,
       };
 
       const logStorage: LogStoreOptionsType = {
         ...DEFAULT_LOG_STORE_OPTIONS,
-        retentionHours: options.logRetentionHours ?? DEFAULT_LOG_STORE_OPTIONS.retentionHours
+        retentionHours: options.logRetentionHours ?? DEFAULT_LOG_STORE_OPTIONS.retentionHours,
       };
 
       const config: ProcessRunnerConfig = {
@@ -267,8 +275,8 @@ class ProcessCommands {
         monitoring,
         storage: {
           error: errorStorage,
-          log: logStorage
-        }
+          log: logStorage,
+        },
       };
 
       console.log('Starting Process Monitor:');
@@ -277,15 +285,17 @@ class ProcessCommands {
       console.log(`  Working Directory: ${config.cwd}`);
       console.log(`  Max Restarts: ${monitoring.maxRestarts}`);
       console.log(`  Restart Delay: ${monitoring.restartDelay}ms`);
-      console.log(`  Health Check Interval: ${monitoring.healthCheckInterval ?? DEFAULT_MONITORING_OPTIONS.healthCheckInterval}ms`);
+      console.log(
+        `  Health Check Interval: ${monitoring.healthCheckInterval ?? DEFAULT_MONITORING_OPTIONS.healthCheckInterval}ms`,
+      );
       if (monitoring.expectedPort) {
         console.log(`  Expected Port: ${monitoring.expectedPort}`);
       }
 
       // Create and start ProcessRunner with storage options
-      const runner = new ProcessRunner(config, { 
-        error: errorStorage, 
-        log: logStorage 
+      const runner = new ProcessRunner(config, {
+        error: errorStorage,
+        log: logStorage,
       });
       const startResult = await runner.start();
 
@@ -307,7 +317,9 @@ class ProcessCommands {
         const processInfo = runner.getProcessInfo();
         if (processInfo && processInfo.startTime) {
           const uptime = Math.floor((Date.now() - processInfo.startTime.getTime()) / 1000);
-          console.log(`[STATUS] Process ${processInfo.id} running for ${uptime}s (restarts: ${processInfo.restartCount})`);
+          console.log(
+            `[STATUS] Process ${processInfo.id} running for ${uptime}s (restarts: ${processInfo.restartCount})`,
+          );
         } else if (processInfo) {
           console.log(`[STATUS] Process ${processInfo.id} running (restarts: ${processInfo.restartCount})`);
         }
@@ -321,10 +333,10 @@ class ProcessCommands {
           return;
         }
         isShuttingDown = true;
-        
+
         console.log(`\nReceived ${signal}. Initiating graceful shutdown...`);
         clearInterval(statusInterval);
-        
+
         try {
           await runner.stop();
           this.activeRunners.delete(options.instanceId);
@@ -332,7 +344,7 @@ class ProcessCommands {
         } catch (shutdownError) {
           console.error('Error during shutdown:', shutdownError);
         }
-        
+
         process.exit(0);
       };
 
@@ -342,7 +354,6 @@ class ProcessCommands {
 
       // Keep alive (process will exit via signal handlers)
       await new Promise(() => {}); // Never resolves
-
     } catch (error) {
       OutputFormatter.formatError(`Process start failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
       process.exit(1);
@@ -367,7 +378,6 @@ class ProcessCommands {
         this.activeRunners.delete(options.instanceId);
         OutputFormatter.formatSuccess(`Process ${options.instanceId} stopped successfully`);
       }
-
     } catch (error) {
       OutputFormatter.formatError(`Process stop failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
       process.exit(1);
@@ -388,19 +398,19 @@ class ProcessCommands {
           success: true,
           instanceId: options.instanceId,
           status: 'running',
-          ...stats
+          ...stats,
         });
       } else {
         // List all active processes
         const processes = Array.from(this.activeRunners.entries()).map(([instanceId, runner]) => ({
           instanceId,
-          stats: runner.getStats()
+          stats: runner.getStats(),
         }));
 
         OutputFormatter.formatOutput({
           success: true,
           activeProcesses: processes.length,
-          processes
+          processes,
         });
       }
     } catch (error) {
@@ -415,9 +425,12 @@ class ProcessRunner {
   private monitor?: ProcessMonitor;
   private isRunning = false;
 
-  constructor(config: ProcessRunnerConfig, storageOptions?: { error?: ErrorStoreOptionsType; log?: LogStoreOptionsType }) {
+  constructor(
+    config: ProcessRunnerConfig,
+    storageOptions?: { error?: ErrorStoreOptionsType; log?: LogStoreOptionsType },
+  ) {
     this.config = config;
-      const options = storageOptions || config.storage || {};
+    const options = storageOptions || config.storage || {};
     this.storage = new StorageManager(undefined, undefined, options);
   }
 
@@ -435,7 +448,7 @@ class ProcessRunner {
         cwd: this.config.cwd,
         status: 'starting',
         startTime: new Date(),
-        restartCount: 0
+        restartCount: 0,
       };
 
       this.monitor = new ProcessMonitor(processInfo, this.storage, this.config.monitoring);
@@ -449,9 +462,9 @@ class ProcessRunner {
       this.isRunning = true;
       return startResult;
     } catch (error) {
-      return { 
-        success: false, 
-        error: error instanceof Error ? error : new Error('Unknown error starting ProcessRunner') 
+      return {
+        success: false,
+        error: error instanceof Error ? error : new Error('Unknown error starting ProcessRunner'),
       };
     }
   }
@@ -478,9 +491,9 @@ class ProcessRunner {
         return { success: false, error: new Error('Unknown error stopping process') };
       }
     } catch (error) {
-      return { 
-        success: false, 
-        error: error instanceof Error ? error : new Error('Unknown error stopping ProcessRunner') 
+      return {
+        success: false,
+        error: error instanceof Error ? error : new Error('Unknown error stopping ProcessRunner'),
       };
     }
   }
@@ -506,8 +519,8 @@ class ProcessRunner {
         instanceId: this.config.instanceId,
         command: this.config.command,
         args: this.config.args,
-        cwd: this.config.cwd
-      }
+        cwd: this.config.cwd,
+      },
     };
   }
 
@@ -528,7 +541,9 @@ class ProcessRunner {
     });
 
     this.monitor.on('process_crashed', (event) => {
-      console.error(`[${event.timestamp.toISOString()}] Process crashed: Exit code ${event.exitCode}, Signal: ${event.signal}`);
+      console.error(
+        `[${event.timestamp.toISOString()}] Process crashed: Exit code ${event.exitCode}, Signal: ${event.signal}`,
+      );
       if (event.willRestart) {
         console.log('Process will be restarted automatically');
       }
@@ -550,11 +565,11 @@ class ErrorCommands {
     reset?: boolean;
   }): Promise<void> {
     let storage: StorageManager | null = null;
-    
+
     try {
       storage = new StorageManager(options.dbPath);
       const result = storage.getErrors(options.instanceId);
-      
+
       if (!result.success && 'error' in result) {
         throw result.error;
       }
@@ -563,29 +578,21 @@ class ErrorCommands {
 
       // Apply filters
       if (options.minLevel !== undefined) {
-        filteredErrors = filteredErrors.filter(error => 
-          error.level >= options.minLevel!
-        );
+        filteredErrors = filteredErrors.filter((error) => error.level >= options.minLevel!);
       }
-      
+
       if (options.maxLevel !== undefined) {
-        filteredErrors = filteredErrors.filter(error => 
-          error.level <= options.maxLevel!
-        );
+        filteredErrors = filteredErrors.filter((error) => error.level <= options.maxLevel!);
       }
 
       if (options.since) {
         const sinceDate = new Date(options.since);
-        filteredErrors = filteredErrors.filter(error => 
-          new Date(error.timestamp) >= sinceDate
-        );
+        filteredErrors = filteredErrors.filter((error) => new Date(error.timestamp) >= sinceDate);
       }
 
       if (options.until) {
         const untilDate = new Date(options.until);
-        filteredErrors = filteredErrors.filter(error => 
-          new Date(error.timestamp) <= untilDate
-        );
+        filteredErrors = filteredErrors.filter((error) => new Date(error.timestamp) <= untilDate);
       }
 
       // Apply pagination
@@ -599,8 +606,8 @@ class ErrorCommands {
         summary: {
           totalErrors: filteredErrors.length,
           errorsByLevel: this.countByField(filteredErrors, 'level'),
-          hasMore: offset + paginatedErrors.length < filteredErrors.length
-        }
+          hasMore: offset + paginatedErrors.length < filteredErrors.length,
+        },
       };
 
       let resetInfo: { clearedCount: number } | undefined;
@@ -629,16 +636,14 @@ class ErrorCommands {
         const outputPayload = resetInfo ? { ...response, reset: resetInfo } : response;
         OutputFormatter.formatOutput(outputPayload, options.format);
       }
-      
+
       // Explicit exit after successful execution
       process.exit(0);
-
     } catch (error) {
       try {
-        OutputFormatter.formatError(
-          error instanceof Error ? error.message : String(error),
-          { instanceId: options.instanceId }
-        );
+        OutputFormatter.formatError(error instanceof Error ? error.message : String(error), {
+          instanceId: options.instanceId,
+        });
       } catch (formatError) {
         // Fallback if formatting fails
         console.error(SafeJSON.stringify({ success: false, error: String(error) }));
@@ -652,7 +657,7 @@ class ErrorCommands {
 
   static async stats(options: { instanceId: string; dbPath?: string }): Promise<void> {
     const storage = new StorageManager(options.dbPath);
-    
+
     try {
       const result = storage.getErrorSummary(options.instanceId);
       if (!result.success && 'error' in result) {
@@ -662,19 +667,17 @@ class ErrorCommands {
       const response = {
         success: true,
         instanceId: options.instanceId,
-        ...result.data
+        ...result.data,
       };
 
       OutputFormatter.formatOutput(response);
-      
+
       // Explicit exit after successful execution
       process.exit(0);
-
     } catch (error) {
-      OutputFormatter.formatError(
-        error instanceof Error ? error.message : String(error),
-        { instanceId: options.instanceId }
-      );
+      OutputFormatter.formatError(error instanceof Error ? error.message : String(error), {
+        instanceId: options.instanceId,
+      });
       process.exit(1);
     } finally {
       SafeCleanup.closeStorage(storage);
@@ -688,7 +691,7 @@ class ErrorCommands {
     }
 
     const storage = new StorageManager(options.dbPath);
-    
+
     try {
       const result = storage.clearErrors(options.instanceId);
       if (!result.success && 'error' in result) {
@@ -698,19 +701,17 @@ class ErrorCommands {
       const response = {
         success: true,
         message: `Cleared ${result.data.clearedCount} errors for instance ${options.instanceId}`,
-        clearedCount: result.data.clearedCount
+        clearedCount: result.data.clearedCount,
       };
 
       OutputFormatter.formatOutput(response);
-      
+
       // Explicit exit after successful execution
       process.exit(0);
-
     } catch (error) {
-      OutputFormatter.formatError(
-        error instanceof Error ? error.message : String(error),
-        { instanceId: options.instanceId }
-      );
+      OutputFormatter.formatError(error instanceof Error ? error.message : String(error), {
+        instanceId: options.instanceId,
+      });
       process.exit(1);
     } finally {
       SafeCleanup.closeStorage(storage);
@@ -740,7 +741,7 @@ class LogCommands {
     dbPath?: string;
   }): Promise<void> {
     const storage = new StorageManager(undefined, options.dbPath);
-    
+
     try {
       const filter: LogFilter = {
         instanceId: options.instanceId,
@@ -750,7 +751,7 @@ class LogCommands {
         until: options.until ? new Date(options.until) : undefined,
         limit: options.limit || 100,
         offset: options.offset || 0,
-        sortOrder: 'desc'
+        sortOrder: 'desc',
       };
 
       const result = storage.getLogs(filter);
@@ -763,26 +764,22 @@ class LogCommands {
       if (options.format === 'table') {
         OutputFormatter.printLogsTable(response.logs);
       } else if (options.format === 'raw') {
-        response.logs.forEach(log => console.log(log.message));
+        response.logs.forEach((log) => console.log(log.message));
       } else {
         OutputFormatter.formatOutput(response, options.format);
       }
-      
+
       // Explicit exit after successful execution
       process.exit(0);
-
     } catch (error) {
-      OutputFormatter.formatError(
-        error instanceof Error ? error.message : String(error),
-        { instanceId: options.instanceId }
-      );
+      OutputFormatter.formatError(error instanceof Error ? error.message : String(error), {
+        instanceId: options.instanceId,
+      });
       process.exit(1);
     } finally {
       SafeCleanup.closeStorage(storage);
     }
   }
-
-
 
   static async get(options: {
     instanceId: string;
@@ -828,7 +825,7 @@ class LogCommands {
                 // Can't read lock file - try again
               }
               // Wait and retry
-              await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS + Math.random() * RETRY_DELAY_MS));
+              await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS + Math.random() * RETRY_DELAY_MS));
             } else {
               return false;
             }
@@ -895,31 +892,29 @@ class LogCommands {
       } finally {
         await releaseLock();
       }
-      
+
       // Filter logs by duration if specified
       if (options.durationSeconds && options.durationSeconds > 0) {
         logs = LogCommands.filterLogsByDuration(logs, options.durationSeconds);
       }
-      
+
       if (options.format === 'raw') {
         console.log(logs);
       } else {
         const response = {
           success: true,
           logs: logs,
-          instanceId: options.instanceId
+          instanceId: options.instanceId,
         };
         OutputFormatter.formatOutput(response, options.format);
       }
-      
+
       // Explicit exit after successful execution
       process.exit(0);
-
     } catch (error) {
-      OutputFormatter.formatError(
-        error instanceof Error ? error.message : String(error),
-        { instanceId: options.instanceId }
-      );
+      OutputFormatter.formatError(error instanceof Error ? error.message : String(error), {
+        instanceId: options.instanceId,
+      });
       process.exit(1);
     }
   }
@@ -935,16 +930,16 @@ class LogCommands {
 
     const lines = logs.split('\n');
     const now = Date.now();
-    const cutoffTime = now - (durationSeconds * 1000);
-    
-    const filteredLines = lines.filter(line => {
+    const cutoffTime = now - durationSeconds * 1000;
+
+    const filteredLines = lines.filter((line) => {
       // Match log format: [ISO_TIMESTAMP] [stream] content
       const timestampMatch = line.match(/^\[([^\]]+)\]/);
       if (!timestampMatch) {
         // If no timestamp, keep the line (might be continuation of previous log)
         return true;
       }
-      
+
       try {
         const timestamp = new Date(timestampMatch[1]).getTime();
         return timestamp >= cutoffTime;
@@ -953,13 +948,13 @@ class LogCommands {
         return true;
       }
     });
-    
+
     return filteredLines.join('\n');
   }
 
   static async stats(options: { instanceId: string; dbPath?: string }): Promise<void> {
     const storage = new StorageManager(undefined, options.dbPath);
-    
+
     try {
       const result = storage.getLogStats(options.instanceId);
       if (!result.success && 'error' in result) {
@@ -969,19 +964,17 @@ class LogCommands {
       const response = {
         success: true,
         instanceId: options.instanceId,
-        ...result.data
+        ...result.data,
       };
 
       OutputFormatter.formatOutput(response);
-      
+
       // Explicit exit after successful execution
       process.exit(0);
-
     } catch (error) {
-      OutputFormatter.formatError(
-        error instanceof Error ? error.message : String(error),
-        { instanceId: options.instanceId }
-      );
+      OutputFormatter.formatError(error instanceof Error ? error.message : String(error), {
+        instanceId: options.instanceId,
+      });
       process.exit(1);
     } finally {
       SafeCleanup.closeStorage(storage);
@@ -995,7 +988,7 @@ class LogCommands {
     }
 
     const storage = new StorageManager(undefined, options.dbPath);
-    
+
     try {
       const result = storage.clearLogs(options.instanceId);
       if (!result.success && 'error' in result) {
@@ -1005,19 +998,17 @@ class LogCommands {
       const response = {
         success: true,
         message: `Cleared ${result.data.clearedCount} logs for instance ${options.instanceId}`,
-        clearedCount: result.data.clearedCount
+        clearedCount: result.data.clearedCount,
       };
 
       OutputFormatter.formatOutput(response);
-      
+
       // Explicit exit after successful execution
       process.exit(0);
-
     } catch (error) {
-      OutputFormatter.formatError(
-        error instanceof Error ? error.message : String(error),
-        { instanceId: options.instanceId }
-      );
+      OutputFormatter.formatError(error instanceof Error ? error.message : String(error), {
+        instanceId: options.instanceId,
+      });
       process.exit(1);
     } finally {
       SafeCleanup.closeStorage(storage);
@@ -1160,7 +1151,7 @@ Database Storage:
 function initializeDataDirectory(): void {
   const fs = require('fs');
   const dataDir = getDataDirectory();
-  
+
   try {
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
@@ -1175,43 +1166,43 @@ async function main() {
   try {
     // Initialize data directory
     initializeDataDirectory();
-    
+
     const { values: args, positionals } = parseArgs({
       args: process.argv.slice(2),
       options: {
         // Global options
         'instance-id': { type: 'string', short: 'i' },
-        'format': { type: 'string' },
+        format: { type: 'string' },
         'db-path': { type: 'string' },
-        'help': { type: 'boolean', short: 'h' },
-        
+        help: { type: 'boolean', short: 'h' },
+
         // Process options
-        'cwd': { type: 'string', short: 'c' },
-        'port': { type: 'string', short: 'p' },
+        cwd: { type: 'string', short: 'c' },
+        port: { type: 'string', short: 'p' },
         'max-restarts': { type: 'string' },
         'restart-delay': { type: 'string' },
         'health-check-interval': { type: 'string' },
         'max-errors': { type: 'string' },
         'retention-days': { type: 'string' },
         'log-retention-hours': { type: 'string' },
-        'force': { type: 'boolean' },
-        
+        force: { type: 'boolean' },
+
         // Filter options
-        'levels': { type: 'string' },
-        'streams': { type: 'string' },
-        'categories': { type: 'string' },
-        'severities': { type: 'string' },
-        'since': { type: 'string' },
-        'until': { type: 'string' },
-        'limit': { type: 'string' },
-        'offset': { type: 'string' },
+        levels: { type: 'string' },
+        streams: { type: 'string' },
+        categories: { type: 'string' },
+        severities: { type: 'string' },
+        since: { type: 'string' },
+        until: { type: 'string' },
+        limit: { type: 'string' },
+        offset: { type: 'string' },
         'last-sequence': { type: 'string' },
-        'count': { type: 'string' },
-        'confirm': { type: 'boolean' },
-        'reset': { type: 'boolean' },
-        'duration': { type: 'string' },
+        count: { type: 'string' },
+        confirm: { type: 'boolean' },
+        reset: { type: 'boolean' },
+        duration: { type: 'string' },
       },
-      allowPositionals: true
+      allowPositionals: true,
     });
 
     const command = positionals[0];
@@ -1227,21 +1218,20 @@ async function main() {
       case 'process':
         await handleProcessCommand(subcommand, args, positionals.slice(2));
         break;
-        
+
       case 'errors':
         await handleErrorCommand(subcommand, args);
         break;
-        
+
       case 'logs':
         await handleLogCommand(subcommand, args);
         break;
-        
+
       default:
         OutputFormatter.formatError(`Unknown command: ${command}`);
         showHelp();
         process.exit(1);
     }
-
   } catch (error) {
     OutputFormatter.formatError(`CLI failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     process.exit(1);
@@ -1270,28 +1260,28 @@ async function handleProcessCommand(subcommand: string, args: Record<string, unk
         restartDelay: parseIntArg(args, 'restart-delay'),
         maxErrors: parseIntArg(args, 'max-errors'),
         retentionDays: parseIntArg(args, 'retention-days'),
-        logRetentionHours: parseIntArg(args, 'log-retention-hours')
+        logRetentionHours: parseIntArg(args, 'log-retention-hours'),
       });
       break;
-      
+
     case 'stop':
       if (!args['instance-id']) {
         OutputFormatter.formatError('--instance-id is required for stop command');
         process.exit(1);
       }
-      
+
       await ProcessCommands.stop({
         instanceId: String(args['instance-id']),
-        force: Boolean(args.force)
+        force: Boolean(args.force),
       });
       break;
-      
+
     case 'status':
       await ProcessCommands.status({
-        instanceId: args['instance-id'] ? String(args['instance-id']) : undefined
+        instanceId: args['instance-id'] ? String(args['instance-id']) : undefined,
       });
       break;
-      
+
     default:
       OutputFormatter.formatError(`Unknown process subcommand: ${subcommand}`);
       process.exit(1);
@@ -1317,35 +1307,35 @@ async function handleErrorCommand(subcommand: string, args: Record<string, unkno
         offset: parseIntArg(args, 'offset'),
         format: args.format as 'json' | 'table' | 'raw',
         dbPath: args['db-path'] ? String(args['db-path']) : undefined,
-        reset: Boolean(args.reset)
+        reset: Boolean(args.reset),
       });
       break;
-      
+
     case 'stats':
       if (!args['instance-id']) {
         OutputFormatter.formatError('--instance-id is required for stats command');
         process.exit(1);
       }
-      
+
       await ErrorCommands.stats({
         instanceId: String(args['instance-id']),
-        dbPath: args['db-path'] ? String(args['db-path']) : undefined
+        dbPath: args['db-path'] ? String(args['db-path']) : undefined,
       });
       break;
-      
+
     case 'clear':
       if (!args['instance-id']) {
         OutputFormatter.formatError('--instance-id is required for clear command');
         process.exit(1);
       }
-      
+
       await ErrorCommands.clear({
         instanceId: String(args['instance-id']),
         confirm: Boolean(args.confirm),
-        dbPath: args['db-path'] ? String(args['db-path']) : undefined
+        dbPath: args['db-path'] ? String(args['db-path']) : undefined,
       });
       break;
-      
+
     default:
       OutputFormatter.formatError(`Unknown error subcommand: ${subcommand}`);
       process.exit(1);
@@ -1363,14 +1353,14 @@ async function handleLogCommand(subcommand: string, args: Record<string, unknown
 
       await LogCommands.list({
         instanceId: String(args['instance-id']),
-        levels: args.levels ? String(args.levels).split(',') as LogLevel[] : undefined,
-        streams: args.streams ? String(args.streams).split(',') as ('stdout' | 'stderr')[] : undefined,
+        levels: args.levels ? (String(args.levels).split(',') as LogLevel[]) : undefined,
+        streams: args.streams ? (String(args.streams).split(',') as ('stdout' | 'stderr')[]) : undefined,
         since: args.since ? String(args.since) : undefined,
         until: args.until ? String(args.until) : undefined,
         limit: parseIntArg(args, 'limit'),
         offset: parseIntArg(args, 'offset'),
         format: args.format as 'json' | 'table' | 'raw',
-        dbPath: args['db-path'] ? String(args['db-path']) : undefined
+        dbPath: args['db-path'] ? String(args['db-path']) : undefined,
       });
       break;
 
@@ -1385,35 +1375,35 @@ async function handleLogCommand(subcommand: string, args: Record<string, unknown
         instanceId: String(args['instance-id']),
         format: args.format as 'json' | 'raw',
         reset: Boolean(args.reset),
-        durationSeconds: parseIntArg(args, 'duration')
+        durationSeconds: parseIntArg(args, 'duration'),
       });
       break;
-      
+
     case 'stats':
       if (!args['instance-id']) {
         OutputFormatter.formatError('--instance-id is required for stats command');
         process.exit(1);
       }
-      
+
       await LogCommands.stats({
         instanceId: String(args['instance-id']),
-        dbPath: args['db-path'] ? String(args['db-path']) : undefined
+        dbPath: args['db-path'] ? String(args['db-path']) : undefined,
       });
       break;
-      
+
     case 'clear':
       if (!args['instance-id']) {
         OutputFormatter.formatError('--instance-id is required for clear command');
         process.exit(1);
       }
-      
+
       await LogCommands.clear({
         instanceId: String(args['instance-id']),
         confirm: Boolean(args.confirm),
-        dbPath: args['db-path'] ? String(args['db-path']) : undefined
+        dbPath: args['db-path'] ? String(args['db-path']) : undefined,
       });
       break;
-      
+
     default:
       OutputFormatter.formatError(`Unknown log subcommand: ${subcommand}`);
       process.exit(1);
@@ -1422,7 +1412,7 @@ async function handleLogCommand(subcommand: string, args: Record<string, unknown
 
 // Run CLI if this file is executed directly
 if (process.argv[1] && process.argv[1].endsWith('cli-tools.ts')) {
-  main().catch(error => {
+  main().catch((error) => {
     OutputFormatter.formatError(`Unhandled error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     process.exit(1);
   });

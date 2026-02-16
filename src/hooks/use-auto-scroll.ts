@@ -9,7 +9,7 @@ type AutoScrollOptions = {
 
 export function useAutoScroll<T extends HTMLElement>(
   containerRef: RefObject<T | null>,
-  { enabled = true, behavior = 'auto', bottomThreshold = 128, watch }: AutoScrollOptions = {}
+  { enabled = true, behavior = 'auto', bottomThreshold = 128, watch }: AutoScrollOptions = {},
 ): { scrollToBottom: () => void } {
   const isAtBottomRef = useRef(true);
 

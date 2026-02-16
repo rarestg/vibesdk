@@ -14,18 +14,22 @@ export function AppLayout({ children }: AppLayoutProps) {
   const { pathname } = useLocation();
   return (
     <AppsDataProvider>
-      <SidebarProvider 
+      <SidebarProvider
         defaultOpen={false}
-        style={{
-          "--sidebar-width": "320px",
-          "--sidebar-width-mobile": "280px",
-          "--sidebar-width-icon": "52px"
-        } as React.CSSProperties}
+        style={
+          {
+            '--sidebar-width': '320px',
+            '--sidebar-width-mobile': '280px',
+            '--sidebar-width-icon': '52px',
+          } as React.CSSProperties
+        }
       >
         <AppSidebar />
-        <SidebarInset className={clsx("bg-bg-3 flex flex-col h-screen relative", pathname !== "/" && "overflow-hidden")}>
+        <SidebarInset
+          className={clsx('bg-bg-3 flex flex-col h-screen relative', pathname !== '/' && 'overflow-hidden')}
+        >
           <GlobalHeader />
-          <div className={clsx("flex-1 bg-bg-3", pathname !== "/" && "min-h-0 overflow-auto")}>
+          <div className={clsx('flex-1 bg-bg-3', pathname !== '/' && 'min-h-0 overflow-auto')}>
             {children || <Outlet />}
           </div>
         </SidebarInset>

@@ -16,7 +16,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
-  
+
   // Auth provider configuration
   authProviders: {
     google: boolean;
@@ -25,18 +25,18 @@ interface AuthContextType {
   } | null;
   hasOAuth: boolean;
   requiresEmailAuth: boolean;
-  
+
   // OAuth login method with redirect support
   login: (provider: 'google' | 'github', redirectUrl?: string) => void;
-  
+
   // Email/password login method
   loginWithEmail: (credentials: { email: string; password: string }) => Promise<void>;
   register: (data: { email: string; password: string; name?: string }) => Promise<void>;
-  
+
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   clearError: () => void;
-  
+
   // Redirect URL management
   setIntendedUrl: (url: string) => void;
   getIntendedUrl: () => string | null;
@@ -54,14 +54,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [authProviders, setAuthProviders] = useState<{ google: boolean; github: boolean; email: boolean; } | null>(null);
+  const [authProviders, setAuthProviders] = useState<{ google: boolean; github: boolean; email: boolean } | null>(null);
   const [hasOAuth, setHasOAuth] = useState<boolean>(false);
   const [requiresEmailAuth, setRequiresEmailAuth] = useState<boolean>(true);
   const navigate = useNavigate();
-  
+
   // Sync user context with Sentry for error tracking
   useSentryUser(user);
-  
+
   // Ref to store the refresh timer
   const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -92,7 +92,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.warn('Failed to clear intended URL:', error);
     }
   }, []);
-
 
   // Fetch auth providers configuration
   const fetchAuthProviders = useCallback(async () => {
@@ -141,7 +140,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const checkAuth = useCallback(async () => {
     try {
       const response = await apiClient.getProfile(true);
-      
+
       if (response.success && response.data?.user) {
         setUser({ ...response.data.user, isAnonymous: false } as AuthUser);
         setToken(null); // Profile endpoint doesn't return token, cookies are used
@@ -151,7 +150,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           sessionId: response.data.sessionId || response.data.user.id,
           expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours expiry
         });
-        
+
         // Setup token refresh
         setupTokenRefresh();
       } else {
@@ -188,93 +187,102 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [fetchAuthProviders, checkAuth]);
 
   // OAuth login method with redirect support
-  const login = useCallback((provider: 'google' | 'github', redirectUrl?: string) => {
-    // Store intended redirect URL if provided, otherwise use current location
-    const intendedUrl = redirectUrl || window.location.pathname + window.location.search;
-    setIntendedUrl(intendedUrl);
-    
-    // Build OAuth URL with redirect parameter
-    const oauthUrl = new URL(`/api/auth/oauth/${provider}`, window.location.origin);
-    oauthUrl.searchParams.set('redirect_url', intendedUrl);
-    
-    // Redirect to OAuth provider
-    window.location.href = oauthUrl.toString();
-  }, [setIntendedUrl]);
+  const login = useCallback(
+    (provider: 'google' | 'github', redirectUrl?: string) => {
+      // Store intended redirect URL if provided, otherwise use current location
+      const intendedUrl = redirectUrl || window.location.pathname + window.location.search;
+      setIntendedUrl(intendedUrl);
+
+      // Build OAuth URL with redirect parameter
+      const oauthUrl = new URL(`/api/auth/oauth/${provider}`, window.location.origin);
+      oauthUrl.searchParams.set('redirect_url', intendedUrl);
+
+      // Redirect to OAuth provider
+      window.location.href = oauthUrl.toString();
+    },
+    [setIntendedUrl],
+  );
 
   // Email/password login
-  const loginWithEmail = useCallback(async (credentials: { email: string; password: string }) => {
-    setError(null);
-    setIsLoading(true);
+  const loginWithEmail = useCallback(
+    async (credentials: { email: string; password: string }) => {
+      setError(null);
+      setIsLoading(true);
 
-    try {
-      const response = await apiClient.loginWithEmail(credentials);
+      try {
+        const response = await apiClient.loginWithEmail(credentials);
 
-      if (response.success && response.data) {
-        setUser({ ...response.data.user, isAnonymous: false } as AuthUser);
-        setToken(null); // Using cookies for authentication
-        setSession({
-          userId: response.data.user.id,
-          email: response.data.user.email,
-          sessionId: response.data.sessionId,
-          expiresAt: response.data.expiresAt,
-        });
-        setupTokenRefresh();
-        
-        // Navigate to intended URL or default to home
-        const intendedUrl = getIntendedUrl();
-        clearIntendedUrl();
-        navigate(intendedUrl || '/');
+        if (response.success && response.data) {
+          setUser({ ...response.data.user, isAnonymous: false } as AuthUser);
+          setToken(null); // Using cookies for authentication
+          setSession({
+            userId: response.data.user.id,
+            email: response.data.user.email,
+            sessionId: response.data.sessionId,
+            expiresAt: response.data.expiresAt,
+          });
+          setupTokenRefresh();
+
+          // Navigate to intended URL or default to home
+          const intendedUrl = getIntendedUrl();
+          clearIntendedUrl();
+          navigate(intendedUrl || '/');
+        }
+      } catch (error) {
+        console.error('Login error:', error);
+        if (error instanceof ApiError) {
+          setError(error.message);
+        } else {
+          setError('Connection error. Please try again.');
+        }
+        // Don't navigate on error - let modal stay open
+        throw error; // Re-throw to inform caller
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error) {
-      console.error('Login error:', error);
-      if (error instanceof ApiError) {
-        setError(error.message);
-      } else {
-        setError('Connection error. Please try again.');
-      }
-      // Don't navigate on error - let modal stay open
-      throw error; // Re-throw to inform caller
-    } finally {
-      setIsLoading(false);
-    }
-  }, [navigate, setupTokenRefresh, getIntendedUrl, clearIntendedUrl]);
+    },
+    [navigate, setupTokenRefresh, getIntendedUrl, clearIntendedUrl],
+  );
 
   // Register new user
-  const register = useCallback(async (data: { email: string; password: string; name?: string }) => {
-    setError(null);
-    setIsLoading(true);
+  const register = useCallback(
+    async (data: { email: string; password: string; name?: string }) => {
+      setError(null);
+      setIsLoading(true);
 
-    try {
-      const response = await apiClient.register(data);
+      try {
+        const response = await apiClient.register(data);
 
-      if (response.success && response.data) {
-        setUser({ ...response.data.user, isAnonymous: false } as AuthUser);
-        setToken(null); // Using cookies for authentication
-        setSession({
-          userId: response.data.user.id,
-          email: response.data.user.email,
-          sessionId: response.data.sessionId,
-          expiresAt: response.data.expiresAt,
-        });
-        setupTokenRefresh();
-        
-        // Navigate to intended URL or default to home
-        const intendedUrl = getIntendedUrl();
-        clearIntendedUrl();
-        navigate(intendedUrl || '/');
+        if (response.success && response.data) {
+          setUser({ ...response.data.user, isAnonymous: false } as AuthUser);
+          setToken(null); // Using cookies for authentication
+          setSession({
+            userId: response.data.user.id,
+            email: response.data.user.email,
+            sessionId: response.data.sessionId,
+            expiresAt: response.data.expiresAt,
+          });
+          setupTokenRefresh();
+
+          // Navigate to intended URL or default to home
+          const intendedUrl = getIntendedUrl();
+          clearIntendedUrl();
+          navigate(intendedUrl || '/');
+        }
+      } catch (error) {
+        console.error('Registration error:', error);
+        if (error instanceof ApiError) {
+          setError(error.message);
+        } else {
+          setError('Connection error. Please try again.');
+        }
+        throw error; // Re-throw to inform caller
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error) {
-      console.error('Registration error:', error);
-      if (error instanceof ApiError) {
-        setError(error.message);
-      } else {
-        setError('Connection error. Please try again.');
-      }
-      throw error; // Re-throw to inform caller
-    } finally {
-      setIsLoading(false);
-    }
-  }, [navigate, setupTokenRefresh, getIntendedUrl, clearIntendedUrl]);
+    },
+    [navigate, setupTokenRefresh, getIntendedUrl, clearIntendedUrl],
+  );
 
   // Logout
   const logout = useCallback(async () => {
@@ -298,7 +306,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refreshUser = useCallback(async () => {
     await checkAuth();
   }, [checkAuth]);
-
 
   // Clear error
   const clearError = useCallback(() => {

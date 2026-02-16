@@ -9,7 +9,7 @@ import './index.css';
 // Initialize Sentry before rendering
 initSentry();
 
-// Type for React Router hydration data  
+// Type for React Router hydration data
 import type { RouterState } from 'react-router';
 
 declare global {
@@ -19,9 +19,7 @@ declare global {
 }
 
 const router = createBrowserRouter(routes, {
-	hydrationData: window.__staticRouterHydrationData,
+  hydrationData: window.__staticRouterHydrationData,
 });
 
-createRoot(document.getElementById('root')!).render(
-  <RouterProvider router={router} />
-);
+createRoot(document.getElementById('root')!).render(<RouterProvider router={router} />);

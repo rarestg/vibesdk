@@ -17,7 +17,7 @@ import {
   MonitoringEvent,
   SimpleError,
   DEFAULT_MONITORING_OPTIONS,
-  getDataDirectory
+  getDataDirectory,
 } from './types.js';
 
 // ============================================================================
@@ -216,7 +216,7 @@ const MOCK_SCRIPTS = {
     console.error('Plain stderr message');
     pinoLog(30, 'JSON message 2');
     setTimeout(() => process.exit(0), 300);
-  `
+  `,
 };
 
 // ============================================================================
@@ -256,7 +256,7 @@ async function cleanupTempDir(dir: string): Promise<void> {
 function waitForState(
   monitor: ProcessMonitor,
   targetState: ProcessState,
-  timeout: number = TEST_TIMEOUT
+  timeout: number = TEST_TIMEOUT,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const timeoutId = setTimeout(() => {
@@ -292,7 +292,7 @@ function waitForState(
 function waitForEvent(
   monitor: ProcessMonitor,
   eventType: MonitoringEvent['type'],
-  timeout: number = TEST_TIMEOUT
+  timeout: number = TEST_TIMEOUT,
 ): Promise<MonitoringEvent> {
   return new Promise((resolve, reject) => {
     const timeoutId = setTimeout(() => {
@@ -318,7 +318,7 @@ function spawnMockProcess(scriptKey: keyof typeof MOCK_SCRIPTS, env?: Record<str
   const script = MOCK_SCRIPTS[scriptKey];
   return spawn('bun', ['-e', script], {
     env: { ...process.env, ...env },
-    stdio: ['pipe', 'pipe', 'pipe']
+    stdio: ['pipe', 'pipe', 'pipe'],
   });
 }
 
@@ -332,7 +332,7 @@ function createTestProcessInfo(instanceId: string, scriptKey: keyof typeof MOCK_
     command: 'bun',
     args: ['-e', MOCK_SCRIPTS[scriptKey]],
     cwd: process.cwd(),
-    restartCount: 0
+    restartCount: 0,
   };
 }
 
@@ -343,7 +343,7 @@ function createTestMonitor(
   storage: StorageManager,
   instanceId: string,
   scriptKey: keyof typeof MOCK_SCRIPTS = 'startup',
-  options: MonitoringOptions = {}
+  options: MonitoringOptions = {},
 ): ProcessMonitor {
   const processInfo = createTestProcessInfo(instanceId, scriptKey);
   return new ProcessMonitor(processInfo, storage, {
@@ -352,7 +352,7 @@ function createTestMonitor(
     restartDelay: 100,
     healthCheckInterval: 5000,
     errorBufferSize: 100,
-    ...options
+    ...options,
   });
 }
 
@@ -360,7 +360,7 @@ function createTestMonitor(
  * Sleep helper
  */
 function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // ============================================================================
@@ -374,7 +374,7 @@ describe('Unit: CircularBuffer', () => {
     const instanceId = getTestInstanceId();
     const storage = new StorageManager(
       join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
+      join(testDataDir, `${instanceId}-logs.db`),
     );
 
     try {
@@ -386,90 +386,102 @@ describe('Unit: CircularBuffer', () => {
     }
   });
 
-  it('should store and retrieve logs in order', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+  it(
+    'should store and retrieve logs in order',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'startup');
-      const result = await monitor.start();
-      expect(result.success).toBe(true);
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'startup');
+        const result = await monitor.start();
+        expect(result.success).toBe(true);
 
-      // Wait for some logs to accumulate
-      await sleep(500);
+        // Wait for some logs to accumulate
+        await sleep(500);
 
-      const logs = monitor.getRecentLogs(50);
-      expect(logs.length).toBeGreaterThan(0);
+        const logs = monitor.getRecentLogs(50);
+        expect(logs.length).toBeGreaterThan(0);
 
-      // Verify logs are in chronological order
-      for (let i = 1; i < logs.length; i++) {
-        expect(logs[i].timestamp.getTime()).toBeGreaterThanOrEqual(logs[i - 1].timestamp.getTime());
+        // Verify logs are in chronological order
+        for (let i = 1; i < logs.length; i++) {
+          expect(logs[i].timestamp.getTime()).toBeGreaterThanOrEqual(logs[i - 1].timestamp.getTime());
+        }
+
+        await monitor.cleanup();
+      } finally {
+        storage.close();
       }
+    },
+    TEST_TIMEOUT,
+  );
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+  it(
+    'should respect buffer capacity',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-  it('should respect buffer capacity', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+      const bufferSize = 50;
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'flood', {
+          errorBufferSize: bufferSize,
+        });
+        const result = await monitor.start();
+        expect(result.success).toBe(true);
 
-    const bufferSize = 50;
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'flood', {
-        errorBufferSize: bufferSize
-      });
-      const result = await monitor.start();
-      expect(result.success).toBe(true);
+        // Wait for flood to complete
+        await sleep(2000);
 
-      // Wait for flood to complete
-      await sleep(2000);
+        const logs = monitor.getRecentLogs(1000);
+        // Buffer should not exceed configured size
+        expect(logs.length).toBeLessThanOrEqual(bufferSize);
 
-      const logs = monitor.getRecentLogs(1000);
-      // Buffer should not exceed configured size
-      expect(logs.length).toBeLessThanOrEqual(bufferSize);
-
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
-
-  it('should handle slice operations correctly', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
-
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'startup');
-      const result = await monitor.start();
-      expect(result.success).toBe(true);
-
-      await sleep(1000);
-
-      const allLogs = monitor.getRecentLogs(100);
-      const lastFive = monitor.getRecentLogs(5);
-
-      expect(lastFive.length).toBeLessThanOrEqual(5);
-      if (allLogs.length >= 5) {
-        expect(lastFive).toEqual(allLogs.slice(-5));
+        await monitor.cleanup();
+      } finally {
+        storage.close();
       }
+    },
+    TEST_TIMEOUT,
+  );
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+  it(
+    'should handle slice operations correctly',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
+
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'startup');
+        const result = await monitor.start();
+        expect(result.success).toBe(true);
+
+        await sleep(1000);
+
+        const allLogs = monitor.getRecentLogs(100);
+        const lastFive = monitor.getRecentLogs(5);
+
+        expect(lastFive.length).toBeLessThanOrEqual(5);
+        if (allLogs.length >= 5) {
+          expect(lastFive).toEqual(allLogs.slice(-5));
+        }
+
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
 });
 
 // ============================================================================
@@ -489,7 +501,10 @@ describe('Unit: FileLock', () => {
     await fs.writeFile(lockFilePath, `${process.pid}:${Date.now()}`, { flag: 'wx' });
 
     // Verify lock file exists
-    const lockExists = await fs.access(lockFilePath).then(() => true).catch(() => false);
+    const lockExists = await fs
+      .access(lockFilePath)
+      .then(() => true)
+      .catch(() => false);
     expect(lockExists).toBe(true);
 
     // Clean up
@@ -547,87 +562,99 @@ describe('Unit: FileLock', () => {
 // ============================================================================
 
 describe('Unit: SimpleLogManager', () => {
-  it('should append and retrieve logs', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+  it(
+    'should append and retrieve logs',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'startup');
-      const result = await monitor.start();
-      expect(result.success).toBe(true);
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'startup');
+        const result = await monitor.start();
+        expect(result.success).toBe(true);
 
-      await sleep(500);
+        await sleep(500);
 
-      const logs = await monitor.getAllLogsAndReset();
-      expect(logs.length).toBeGreaterThan(0);
-      expect(logs).toContain('VITE');
+        const logs = await monitor.getAllLogsAndReset();
+        expect(logs.length).toBeGreaterThan(0);
+        expect(logs).toContain('VITE');
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
-
-  it('should reset log file after retrieval', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
-
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'startup');
-      const result = await monitor.start();
-      expect(result.success).toBe(true);
-
-      await sleep(500);
-
-      // First retrieval should have content
-      const logs1 = await monitor.getAllLogsAndReset();
-      expect(logs1.length).toBeGreaterThan(0);
-
-      // Immediately after reset, logs should be empty or minimal
-      const logs2 = await monitor.getAllLogsAndReset();
-      expect(logs2.length).toBeLessThan(logs1.length);
-
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
-
-  it('should handle concurrent read/write operations', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
-
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'flood');
-      const result = await monitor.start();
-      expect(result.success).toBe(true);
-
-      // Concurrent reads while flooding
-      const reads = await Promise.all([
-        sleep(100).then(() => monitor.getAllLogsAndReset()),
-        sleep(200).then(() => monitor.getAllLogsAndReset()),
-        sleep(300).then(() => monitor.getAllLogsAndReset())
-      ]);
-
-      // All reads should complete without error
-      for (const logs of reads) {
-        expect(typeof logs).toBe('string');
+        await monitor.cleanup();
+      } finally {
+        storage.close();
       }
+    },
+    TEST_TIMEOUT,
+  );
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+  it(
+    'should reset log file after retrieval',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
+
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'startup');
+        const result = await monitor.start();
+        expect(result.success).toBe(true);
+
+        await sleep(500);
+
+        // First retrieval should have content
+        const logs1 = await monitor.getAllLogsAndReset();
+        expect(logs1.length).toBeGreaterThan(0);
+
+        // Immediately after reset, logs should be empty or minimal
+        const logs2 = await monitor.getAllLogsAndReset();
+        expect(logs2.length).toBeLessThan(logs1.length);
+
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    'should handle concurrent read/write operations',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
+
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'flood');
+        const result = await monitor.start();
+        expect(result.success).toBe(true);
+
+        // Concurrent reads while flooding
+        const reads = await Promise.all([
+          sleep(100).then(() => monitor.getAllLogsAndReset()),
+          sleep(200).then(() => monitor.getAllLogsAndReset()),
+          sleep(300).then(() => monitor.getAllLogsAndReset()),
+        ]);
+
+        // All reads should complete without error
+        for (const logs of reads) {
+          expect(typeof logs).toBe('string');
+        }
+
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
 });
 
 // ============================================================================
@@ -639,7 +666,7 @@ describe('Unit: ProcessMonitor State Machine', () => {
     const instanceId = getTestInstanceId();
     const storage = new StorageManager(
       join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
+      join(testDataDir, `${instanceId}-logs.db`),
     );
 
     try {
@@ -650,114 +677,130 @@ describe('Unit: ProcessMonitor State Machine', () => {
     }
   });
 
-  it('should transition stopped -> starting -> running', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+  it(
+    'should transition stopped -> starting -> running',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'startup');
-      const states: ProcessState[] = [];
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'startup');
+        const states: ProcessState[] = [];
 
-      monitor.on('state_changed', (event: MonitoringEvent) => {
-        if (event.type === 'state_changed') {
-          states.push(event.newState);
-        }
-      });
+        monitor.on('state_changed', (event: MonitoringEvent) => {
+          if (event.type === 'state_changed') {
+            states.push(event.newState);
+          }
+        });
 
-      const result = await monitor.start();
-      expect(result.success).toBe(true);
-      expect(monitor.getState()).toBe('running');
-      expect(states).toContain('starting');
-      expect(states).toContain('running');
+        const result = await monitor.start();
+        expect(result.success).toBe(true);
+        expect(monitor.getState()).toBe('running');
+        expect(states).toContain('starting');
+        expect(states).toContain('running');
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
 
-  it('should transition running -> stopping -> stopped on graceful stop', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+  it(
+    'should transition running -> stopping -> stopped on graceful stop',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'startup');
-      await monitor.start();
-      expect(monitor.getState()).toBe('running');
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'startup');
+        await monitor.start();
+        expect(monitor.getState()).toBe('running');
 
-      const states: ProcessState[] = [];
-      monitor.on('state_changed', (event: MonitoringEvent) => {
-        if (event.type === 'state_changed') {
-          states.push(event.newState);
-        }
-      });
+        const states: ProcessState[] = [];
+        monitor.on('state_changed', (event: MonitoringEvent) => {
+          if (event.type === 'state_changed') {
+            states.push(event.newState);
+          }
+        });
 
-      await monitor.stop();
-      expect(monitor.getState()).toBe('stopped');
-      expect(states).toContain('stopping');
+        await monitor.stop();
+        expect(monitor.getState()).toBe('stopped');
+        expect(states).toContain('stopping');
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
 
-  it('should transition running -> crashed on unexpected exit', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+  it(
+    'should transition running -> crashed on unexpected exit',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'crash', {
-        autoRestart: false
-      });
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'crash', {
+          autoRestart: false,
+        });
 
-      const crashPromise = waitForEvent(monitor, 'process_crashed');
-      await monitor.start();
-      await crashPromise;
+        const crashPromise = waitForEvent(monitor, 'process_crashed');
+        await monitor.start();
+        await crashPromise;
 
-      expect(monitor.getState()).toBe('crashed');
+        expect(monitor.getState()).toBe('crashed');
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
 
-  it('should prevent starting when already running', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+  it(
+    'should prevent starting when already running',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'startup');
-      await monitor.start();
-      expect(monitor.getState()).toBe('running');
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'startup');
+        await monitor.start();
+        expect(monitor.getState()).toBe('running');
 
-      const result = await monitor.start();
-      expect(result.success).toBe(false);
+        const result = await monitor.start();
+        expect(result.success).toBe(false);
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
 
   it('should prevent stopping when already stopped', async () => {
     const instanceId = getTestInstanceId();
     const storage = new StorageManager(
       join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
+      join(testDataDir, `${instanceId}-logs.db`),
     );
 
     try {
@@ -779,119 +822,139 @@ describe('Unit: ProcessMonitor State Machine', () => {
 // ============================================================================
 
 describe('Unit: ProcessMonitor Stream Processing', () => {
-  it('should handle JSON log lines', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+  it(
+    'should handle JSON log lines',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'startup');
-      await monitor.start();
-      await sleep(500);
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'startup');
+        await monitor.start();
+        await sleep(500);
 
-      const logs = monitor.getRecentLogs(50);
-      expect(logs.some(l => l.content.includes('VITE'))).toBe(true);
+        const logs = monitor.getRecentLogs(50);
+        expect(logs.some((l) => l.content.includes('VITE'))).toBe(true);
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
 
-  it('should handle plain text output', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+  it(
+    'should handle plain text output',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'plainText');
-      await monitor.start();
-      await waitForState(monitor, 'stopped', SHORT_TIMEOUT);
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'plainText');
+        await monitor.start();
+        await waitForState(monitor, 'stopped', SHORT_TIMEOUT);
 
-      const allLogs = await monitor.getAllLogsAndReset();
-      expect(allLogs).toContain('Plain text');
+        const allLogs = await monitor.getAllLogsAndReset();
+        expect(allLogs).toContain('Plain text');
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
 
-  it('should handle mixed JSON and plain text', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+  it(
+    'should handle mixed JSON and plain text',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'mixedOutput');
-      await monitor.start();
-      await waitForState(monitor, 'stopped', SHORT_TIMEOUT);
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'mixedOutput');
+        await monitor.start();
+        await waitForState(monitor, 'stopped', SHORT_TIMEOUT);
 
-      const allLogs = await monitor.getAllLogsAndReset();
-      expect(allLogs).toContain('JSON message');
-      expect(allLogs).toContain('Plain text');
+        const allLogs = await monitor.getAllLogsAndReset();
+        expect(allLogs).toContain('JSON message');
+        expect(allLogs).toContain('Plain text');
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
 
-  it('should separate stdout and stderr', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+  it(
+    'should separate stdout and stderr',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'plainText');
-      await monitor.start();
-      await waitForState(monitor, 'stopped', SHORT_TIMEOUT);
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'plainText');
+        await monitor.start();
+        await waitForState(monitor, 'stopped', SHORT_TIMEOUT);
 
-      const logs = monitor.getRecentLogs(50);
-      const stdoutLogs = logs.filter(l => l.stream === 'stdout');
-      const stderrLogs = logs.filter(l => l.stream === 'stderr');
+        const logs = monitor.getRecentLogs(50);
+        const stdoutLogs = logs.filter((l) => l.stream === 'stdout');
+        const stderrLogs = logs.filter((l) => l.stream === 'stderr');
 
-      expect(stdoutLogs.length).toBeGreaterThan(0);
-      expect(stderrLogs.length).toBeGreaterThan(0);
+        expect(stdoutLogs.length).toBeGreaterThan(0);
+        expect(stderrLogs.length).toBeGreaterThan(0);
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
 
-  it('should handle high-frequency output', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+  it(
+    'should handle high-frequency output',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'flood', {
-        errorBufferSize: 200
-      });
-      await monitor.start();
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'flood', {
+          errorBufferSize: 200,
+        });
+        await monitor.start();
 
-      // Wait for flood to complete
-      await sleep(3000);
+        // Wait for flood to complete
+        await sleep(3000);
 
-      const logs = monitor.getRecentLogs(200);
-      expect(logs.length).toBeGreaterThan(50);
+        const logs = monitor.getRecentLogs(200);
+        expect(logs.length).toBeGreaterThan(50);
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, STRESS_TIMEOUT);
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    STRESS_TIMEOUT,
+  );
 });
 
 // ============================================================================
@@ -899,179 +962,207 @@ describe('Unit: ProcessMonitor Stream Processing', () => {
 // ============================================================================
 
 describe('Unit: ProcessMonitor Error Detection', () => {
-  it('should detect level 50 errors', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+  it(
+    'should detect level 50 errors',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'error');
-      const errorPromise = waitForEvent(monitor, 'error_detected');
-      await monitor.start();
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'error');
+        const errorPromise = waitForEvent(monitor, 'error_detected');
+        await monitor.start();
 
-      const event = await errorPromise;
-      expect(event.type).toBe('error_detected');
-      if (event.type === 'error_detected') {
-        expect(event.error.level).toBe(50);
+        const event = await errorPromise;
+        expect(event.type).toBe('error_detected');
+        if (event.type === 'error_detected') {
+          expect(event.error.level).toBe(50);
+        }
+
+        await monitor.cleanup();
+      } finally {
+        storage.close();
       }
+    },
+    TEST_TIMEOUT,
+  );
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+  it(
+    'should detect level 60 fatal errors',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-  it('should detect level 60 fatal errors', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'crash', {
+          autoRestart: false,
+        });
+        const errorPromise = waitForEvent(monitor, 'error_detected');
+        await monitor.start();
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'crash', {
-        autoRestart: false
-      });
-      const errorPromise = waitForEvent(monitor, 'error_detected');
-      await monitor.start();
+        const event = await errorPromise;
+        expect(event.type).toBe('error_detected');
+        if (event.type === 'error_detected') {
+          expect(event.error.level).toBe(60);
+        }
 
-      const event = await errorPromise;
-      expect(event.type).toBe('error_detected');
-      if (event.type === 'error_detected') {
-        expect(event.error.level).toBe(60);
+        await monitor.cleanup();
+      } finally {
+        storage.close();
       }
+    },
+    TEST_TIMEOUT,
+  );
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+  it(
+    'should store errors in storage',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-  it('should store errors in storage', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'error');
+        // Set up event listener BEFORE starting to avoid race condition
+        const errorPromise = waitForEvent(monitor, 'error_detected');
+        await monitor.start();
+        await errorPromise;
+        await sleep(200);
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'error');
-      // Set up event listener BEFORE starting to avoid race condition
-      const errorPromise = waitForEvent(monitor, 'error_detected');
-      await monitor.start();
-      await errorPromise;
-      await sleep(200);
+        const result = storage.getErrors(instanceId);
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.data.length).toBeGreaterThan(0);
+          expect(result.data[0].level).toBe(50);
+        }
 
-      const result = storage.getErrors(instanceId);
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.length).toBeGreaterThan(0);
-        expect(result.data[0].level).toBe(50);
+        await monitor.cleanup();
+      } finally {
+        storage.close();
       }
+    },
+    TEST_TIMEOUT,
+  );
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+  it(
+    'should detect EADDRINUSE as fatal',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-  it('should detect EADDRINUSE as fatal', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'portConflict', {
+          autoRestart: false,
+        });
+        const errorPromise = waitForEvent(monitor, 'error_detected');
+        await monitor.start();
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'portConflict', {
-        autoRestart: false
-      });
-      const errorPromise = waitForEvent(monitor, 'error_detected');
-      await monitor.start();
+        const event = await errorPromise;
+        if (event.type === 'error_detected') {
+          expect(event.error.message).toContain('EADDRINUSE');
+        }
 
-      const event = await errorPromise;
-      if (event.type === 'error_detected') {
-        expect(event.error.message).toContain('EADDRINUSE');
+        await monitor.cleanup();
+      } finally {
+        storage.close();
       }
+    },
+    TEST_TIMEOUT,
+  );
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+  it(
+    'should detect module not found as fatal',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-  it('should detect module not found as fatal', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'moduleNotFound', {
+          autoRestart: false,
+        });
+        const errorPromise = waitForEvent(monitor, 'error_detected');
+        await monitor.start();
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'moduleNotFound', {
-        autoRestart: false
-      });
-      const errorPromise = waitForEvent(monitor, 'error_detected');
-      await monitor.start();
+        const event = await errorPromise;
+        if (event.type === 'error_detected') {
+          expect(event.error.message).toContain('Cannot find module');
+        }
 
-      const event = await errorPromise;
-      if (event.type === 'error_detected') {
-        expect(event.error.message).toContain('Cannot find module');
+        await monitor.cleanup();
+      } finally {
+        storage.close();
       }
+    },
+    TEST_TIMEOUT,
+  );
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+  it(
+    'should capture compilation errors',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-  it('should capture compilation errors', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'compilationError');
+        const errorPromise = waitForEvent(monitor, 'error_detected');
+        await monitor.start();
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'compilationError');
-      const errorPromise = waitForEvent(monitor, 'error_detected');
-      await monitor.start();
+        const event = await errorPromise;
+        if (event.type === 'error_detected') {
+          expect(event.error.message).toContain('SyntaxError');
+        }
 
-      const event = await errorPromise;
-      if (event.type === 'error_detected') {
-        expect(event.error.message).toContain('SyntaxError');
+        await monitor.cleanup();
+      } finally {
+        storage.close();
       }
+    },
+    TEST_TIMEOUT,
+  );
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+  it(
+    'should capture React errors',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-  it('should capture React errors', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'reactCrash');
+        const errorPromise = waitForEvent(monitor, 'error_detected');
+        await monitor.start();
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'reactCrash');
-      const errorPromise = waitForEvent(monitor, 'error_detected');
-      await monitor.start();
+        const event = await errorPromise;
+        if (event.type === 'error_detected') {
+          expect(event.error.message).toContain('TypeError');
+        }
 
-      const event = await errorPromise;
-      if (event.type === 'error_detected') {
-        expect(event.error.message).toContain('TypeError');
+        await monitor.cleanup();
+      } finally {
+        storage.close();
       }
-
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+    },
+    TEST_TIMEOUT,
+  );
 });
 
 // ============================================================================
@@ -1079,143 +1170,159 @@ describe('Unit: ProcessMonitor Error Detection', () => {
 // ============================================================================
 
 describe('Unit: ProcessMonitor Restart Logic', () => {
-  it('should auto-restart on crash when enabled', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+  it(
+    'should auto-restart on crash when enabled',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'crash', {
-        autoRestart: true,
-        maxRestarts: 2,
-        restartDelay: 100
-      });
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'crash', {
+          autoRestart: true,
+          maxRestarts: 2,
+          restartDelay: 100,
+        });
 
-      let startCount = 0;
-      monitor.on('process_started', () => {
-        startCount++;
-      });
+        let startCount = 0;
+        monitor.on('process_started', () => {
+          startCount++;
+        });
 
-      await monitor.start();
+        await monitor.start();
 
-      // Wait for restart attempts
-      await sleep(2000);
+        // Wait for restart attempts
+        await sleep(2000);
 
-      // Should have started multiple times (initial + restarts)
-      expect(startCount).toBeGreaterThan(1);
+        // Should have started multiple times (initial + restarts)
+        expect(startCount).toBeGreaterThan(1);
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
-
-  it('should respect maxRestarts limit', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
-
-    try {
-      const maxRestarts = 2;
-      const monitor = createTestMonitor(storage, instanceId, 'crash', {
-        autoRestart: true,
-        maxRestarts,
-        restartDelay: 100
-      });
-
-      let startCount = 0;
-      monitor.on('process_started', () => {
-        startCount++;
-      });
-
-      await monitor.start();
-
-      // Wait for all restart attempts
-      await sleep(3000);
-
-      // Initial start + maxRestarts
-      expect(startCount).toBeLessThanOrEqual(maxRestarts + 1);
-
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
-
-  it('should not restart on clean exit', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
-
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'cleanExit', {
-        autoRestart: true,
-        maxRestarts: 3,
-        restartDelay: 100
-      });
-
-      let startCount = 0;
-      monitor.on('process_started', () => {
-        startCount++;
-      });
-
-      await monitor.start();
-      await waitForState(monitor, 'stopped', SHORT_TIMEOUT);
-
-      // Wait to ensure no restart
-      await sleep(500);
-
-      // Should only start once (clean exit = no restart)
-      expect(startCount).toBe(1);
-
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
-
-  it('should respect restartDelay', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
-
-    try {
-      const restartDelay = 500;
-      const monitor = createTestMonitor(storage, instanceId, 'crash', {
-        autoRestart: true,
-        maxRestarts: 1,
-        restartDelay
-      });
-
-      const startTimes: number[] = [];
-      monitor.on('process_started', () => {
-        startTimes.push(Date.now());
-      });
-
-      await monitor.start();
-
-      // Wait for restart
-      await sleep(2000);
-
-      if (startTimes.length >= 2) {
-        const delay = startTimes[1] - startTimes[0];
-        // Delay should be at least restartDelay (with some tolerance for crash time)
-        expect(delay).toBeGreaterThanOrEqual(restartDelay - 100);
+        await monitor.cleanup();
+      } finally {
+        storage.close();
       }
+    },
+    TEST_TIMEOUT,
+  );
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+  it(
+    'should respect maxRestarts limit',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
+
+      try {
+        const maxRestarts = 2;
+        const monitor = createTestMonitor(storage, instanceId, 'crash', {
+          autoRestart: true,
+          maxRestarts,
+          restartDelay: 100,
+        });
+
+        let startCount = 0;
+        monitor.on('process_started', () => {
+          startCount++;
+        });
+
+        await monitor.start();
+
+        // Wait for all restart attempts
+        await sleep(3000);
+
+        // Initial start + maxRestarts
+        expect(startCount).toBeLessThanOrEqual(maxRestarts + 1);
+
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    'should not restart on clean exit',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
+
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'cleanExit', {
+          autoRestart: true,
+          maxRestarts: 3,
+          restartDelay: 100,
+        });
+
+        let startCount = 0;
+        monitor.on('process_started', () => {
+          startCount++;
+        });
+
+        await monitor.start();
+        await waitForState(monitor, 'stopped', SHORT_TIMEOUT);
+
+        // Wait to ensure no restart
+        await sleep(500);
+
+        // Should only start once (clean exit = no restart)
+        expect(startCount).toBe(1);
+
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    'should respect restartDelay',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
+
+      try {
+        const restartDelay = 500;
+        const monitor = createTestMonitor(storage, instanceId, 'crash', {
+          autoRestart: true,
+          maxRestarts: 1,
+          restartDelay,
+        });
+
+        const startTimes: number[] = [];
+        monitor.on('process_started', () => {
+          startTimes.push(Date.now());
+        });
+
+        await monitor.start();
+
+        // Wait for restart
+        await sleep(2000);
+
+        if (startTimes.length >= 2) {
+          const delay = startTimes[1] - startTimes[0];
+          // Delay should be at least restartDelay (with some tolerance for crash time)
+          expect(delay).toBeGreaterThanOrEqual(restartDelay - 100);
+        }
+
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
 });
 
 // ============================================================================
@@ -1231,8 +1338,14 @@ describe('Unit: StorageManager', () => {
     const storage = new StorageManager(errorDbPath, logDbPath);
 
     try {
-      const errorDbExists = await fs.access(errorDbPath).then(() => true).catch(() => false);
-      const logDbExists = await fs.access(logDbPath).then(() => true).catch(() => false);
+      const errorDbExists = await fs
+        .access(errorDbPath)
+        .then(() => true)
+        .catch(() => false);
+      const logDbExists = await fs
+        .access(logDbPath)
+        .then(() => true)
+        .catch(() => false);
 
       expect(errorDbExists).toBe(true);
       expect(logDbExists).toBe(true);
@@ -1245,7 +1358,7 @@ describe('Unit: StorageManager', () => {
     const instanceId = getTestInstanceId();
     const storage = new StorageManager(
       join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
+      join(testDataDir, `${instanceId}-logs.db`),
     );
 
     try {
@@ -1253,7 +1366,7 @@ describe('Unit: StorageManager', () => {
         timestamp: new Date().toISOString(),
         level: 50,
         message: 'Test error message',
-        rawOutput: '{"level":50,"msg":"Test error message"}'
+        rawOutput: '{"level":50,"msg":"Test error message"}',
       };
 
       const storeResult = storage.storeError(instanceId, 'proc-1', error);
@@ -1274,7 +1387,7 @@ describe('Unit: StorageManager', () => {
     const instanceId = getTestInstanceId();
     const storage = new StorageManager(
       join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
+      join(testDataDir, `${instanceId}-logs.db`),
     );
 
     try {
@@ -1282,7 +1395,7 @@ describe('Unit: StorageManager', () => {
         timestamp: new Date().toISOString(),
         level: 50,
         message: 'Duplicate error',
-        rawOutput: '{"level":50,"msg":"Duplicate error"}'
+        rawOutput: '{"level":50,"msg":"Duplicate error"}',
       };
 
       // Store same error multiple times
@@ -1307,7 +1420,7 @@ describe('Unit: StorageManager', () => {
     const instanceId = getTestInstanceId();
     const storage = new StorageManager(
       join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
+      join(testDataDir, `${instanceId}-logs.db`),
     );
 
     try {
@@ -1315,7 +1428,7 @@ describe('Unit: StorageManager', () => {
         timestamp: new Date().toISOString(),
         level: 50,
         message: 'Error to clear',
-        rawOutput: '{}'
+        rawOutput: '{}',
       };
 
       storage.storeError(instanceId, 'proc-1', error);
@@ -1339,7 +1452,7 @@ describe('Unit: StorageManager', () => {
     const instanceId = getTestInstanceId();
     const storage = new StorageManager(
       join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
+      join(testDataDir, `${instanceId}-logs.db`),
     );
 
     try {
@@ -1347,13 +1460,13 @@ describe('Unit: StorageManager', () => {
         timestamp: new Date().toISOString(),
         level: 50,
         message: 'Error 1',
-        rawOutput: '{}'
+        rawOutput: '{}',
       });
       storage.storeError(instanceId, 'proc-1', {
         timestamp: new Date().toISOString(),
         level: 60,
         message: 'Fatal 1',
-        rawOutput: '{}'
+        rawOutput: '{}',
       });
 
       const summaryResult = storage.getErrorSummary(instanceId);
@@ -1373,13 +1486,13 @@ describe('Unit: StorageManager', () => {
     const instanceId = getTestInstanceId();
     const storage = new StorageManager(
       join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
+      join(testDataDir, `${instanceId}-logs.db`),
     );
 
     try {
       const storeResult = storage.storeLogs([
         { instanceId, processId: 'proc-1', level: 'info', message: 'Log 1', stream: 'stdout' },
-        { instanceId, processId: 'proc-1', level: 'error', message: 'Log 2', stream: 'stderr' }
+        { instanceId, processId: 'proc-1', level: 'error', message: 'Log 2', stream: 'stderr' },
       ]);
       expect(storeResult.success).toBe(true);
 
@@ -1397,13 +1510,11 @@ describe('Unit: StorageManager', () => {
     const instanceId = getTestInstanceId();
     const storage = new StorageManager(
       join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
+      join(testDataDir, `${instanceId}-logs.db`),
     );
 
     try {
-      storage.storeLogs([
-        { instanceId, processId: 'proc-1', level: 'info', message: 'Log', stream: 'stdout' }
-      ]);
+      storage.storeLogs([{ instanceId, processId: 'proc-1', level: 'info', message: 'Log', stream: 'stdout' }]);
 
       const clearResult = storage.clearLogs(instanceId);
       expect(clearResult.success).toBe(true);
@@ -1421,7 +1532,7 @@ describe('Unit: StorageManager', () => {
     const instanceId = getTestInstanceId();
     const storage = new StorageManager(
       join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
+      join(testDataDir, `${instanceId}-logs.db`),
     );
 
     try {
@@ -1430,7 +1541,7 @@ describe('Unit: StorageManager', () => {
           timestamp: new Date().toISOString(),
           level: 50,
           message: 'Transaction error',
-          rawOutput: '{}'
+          rawOutput: '{}',
         });
       });
 
@@ -1453,13 +1564,7 @@ describe('Unit: CLI Validation', () => {
   // Import validation functions (we test via process spawn to avoid import issues)
 
   it('should accept valid instance IDs', async () => {
-    const validIds = [
-      'my-app',
-      'myApp123',
-      'test_instance',
-      'a',
-      'A123-test_app'
-    ];
+    const validIds = ['my-app', 'myApp123', 'test_instance', 'a', 'A123-test_app'];
 
     for (const id of validIds) {
       // Validate pattern directly
@@ -1476,7 +1581,7 @@ describe('Unit: CLI Validation', () => {
       '../path/traversal',
       'has spaces',
       'has@special',
-      'a'.repeat(65) // Too long
+      'a'.repeat(65), // Too long
     ];
 
     const pattern = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/;
@@ -1537,120 +1642,136 @@ describe('Unit: CLI Validation', () => {
 // ============================================================================
 
 describe('Integration: Full Process Lifecycle', () => {
-  it('should complete start -> monitor -> stop cycle', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+  it(
+    'should complete start -> monitor -> stop cycle',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'startup');
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'startup');
 
-      // Start
-      const startResult = await monitor.start();
-      expect(startResult.success).toBe(true);
-      expect(monitor.getState()).toBe('running');
+        // Start
+        const startResult = await monitor.start();
+        expect(startResult.success).toBe(true);
+        expect(monitor.getState()).toBe('running');
 
-      // Monitor for a bit
-      await sleep(500);
+        // Monitor for a bit
+        await sleep(500);
 
-      // Verify logs are being collected
-      const logs = monitor.getRecentLogs(50);
-      expect(logs.length).toBeGreaterThan(0);
+        // Verify logs are being collected
+        const logs = monitor.getRecentLogs(50);
+        expect(logs.length).toBeGreaterThan(0);
 
-      // Stop
-      const stopResult = await monitor.stop();
-      expect(stopResult.success).toBe(true);
-      expect(monitor.getState()).toBe('stopped');
+        // Stop
+        const stopResult = await monitor.stop();
+        expect(stopResult.success).toBe(true);
+        expect(monitor.getState()).toBe('stopped');
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
-
-  it('should capture errors during lifecycle', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
-
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'error');
-
-      await monitor.start();
-      await sleep(500);
-
-      // Verify errors were captured
-      const errorResult = storage.getErrors(instanceId);
-      expect(errorResult.success).toBe(true);
-      if (errorResult.success) {
-        expect(errorResult.data.length).toBeGreaterThan(0);
+        await monitor.cleanup();
+      } finally {
+        storage.close();
       }
+    },
+    TEST_TIMEOUT,
+  );
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+  it(
+    'should capture errors during lifecycle',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-  it('should handle process info correctly', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'error');
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'startup');
+        await monitor.start();
+        await sleep(500);
 
-      await monitor.start();
+        // Verify errors were captured
+        const errorResult = storage.getErrors(instanceId);
+        expect(errorResult.success).toBe(true);
+        if (errorResult.success) {
+          expect(errorResult.data.length).toBeGreaterThan(0);
+        }
 
-      const info = monitor.getProcessInfo();
-      expect(info.instanceId).toBe(instanceId);
-      expect(info.command).toBe('bun');
-      expect(info.pid).toBeGreaterThan(0);
-      expect(info.status).toBe('running');
-      expect(info.startTime).toBeInstanceOf(Date);
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+  it(
+    'should handle process info correctly',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-  it('should emit all expected events', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'startup');
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'error');
-      const events: string[] = [];
+        await monitor.start();
 
-      monitor.on('process_started', () => events.push('process_started'));
-      monitor.on('error_detected', () => events.push('error_detected'));
-      monitor.on('process_stopped', () => events.push('process_stopped'));
-      monitor.on('state_changed', () => events.push('state_changed'));
+        const info = monitor.getProcessInfo();
+        expect(info.instanceId).toBe(instanceId);
+        expect(info.command).toBe('bun');
+        expect(info.pid).toBeGreaterThan(0);
+        expect(info.status).toBe('running');
+        expect(info.startTime).toBeInstanceOf(Date);
 
-      await monitor.start();
-      await sleep(500);
-      await monitor.stop();
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
 
-      expect(events).toContain('process_started');
-      expect(events).toContain('error_detected');
-      expect(events).toContain('process_stopped');
-      expect(events).toContain('state_changed');
+  it(
+    'should emit all expected events',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'error');
+        const events: string[] = [];
+
+        monitor.on('process_started', () => events.push('process_started'));
+        monitor.on('error_detected', () => events.push('error_detected'));
+        monitor.on('process_stopped', () => events.push('process_stopped'));
+        monitor.on('state_changed', () => events.push('state_changed'));
+
+        await monitor.start();
+        await sleep(500);
+        await monitor.stop();
+
+        expect(events).toContain('process_started');
+        expect(events).toContain('error_detected');
+        expect(events).toContain('process_stopped');
+        expect(events).toContain('state_changed');
+
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
 });
 
 describe('Integration: Error Management', () => {
@@ -1658,7 +1779,7 @@ describe('Integration: Error Management', () => {
     const instanceId = getTestInstanceId();
     const storage = new StorageManager(
       join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
+      join(testDataDir, `${instanceId}-logs.db`),
     );
 
     try {
@@ -1667,19 +1788,19 @@ describe('Integration: Error Management', () => {
         timestamp: new Date().toISOString(),
         level: 50,
         message: 'Error type A',
-        rawOutput: '{}'
+        rawOutput: '{}',
       });
       storage.storeError(instanceId, 'proc-1', {
         timestamp: new Date().toISOString(),
         level: 50,
         message: 'Error type B',
-        rawOutput: '{}'
+        rawOutput: '{}',
       });
       storage.storeError(instanceId, 'proc-1', {
         timestamp: new Date().toISOString(),
         level: 60,
         message: 'Error type C',
-        rawOutput: '{}'
+        rawOutput: '{}',
       });
 
       const result = storage.getErrors(instanceId);
@@ -1696,7 +1817,7 @@ describe('Integration: Error Management', () => {
     const instanceId = getTestInstanceId();
     const storage = new StorageManager(
       join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
+      join(testDataDir, `${instanceId}-logs.db`),
     );
 
     try {
@@ -1704,13 +1825,13 @@ describe('Integration: Error Management', () => {
         timestamp: new Date().toISOString(),
         level: 50,
         message: 'Repeated error',
-        rawOutput: '{}'
+        rawOutput: '{}',
       };
 
       for (let i = 0; i < 5; i++) {
         storage.storeError(instanceId, 'proc-1', {
           ...error,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         });
       }
 
@@ -1731,7 +1852,7 @@ describe('Integration: Log Management', () => {
     const instanceId = getTestInstanceId();
     const storage = new StorageManager(
       join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
+      join(testDataDir, `${instanceId}-logs.db`),
     );
 
     try {
@@ -1741,7 +1862,7 @@ describe('Integration: Log Management', () => {
         processId: 'proc-1',
         level: 'info' as const,
         message: `Log ${i}`,
-        stream: 'stdout' as const
+        stream: 'stdout' as const,
       }));
       storage.storeLogs(logs);
 
@@ -1768,14 +1889,14 @@ describe('Integration: Log Management', () => {
     const instanceId = getTestInstanceId();
     const storage = new StorageManager(
       join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
+      join(testDataDir, `${instanceId}-logs.db`),
     );
 
     try {
       storage.storeLogs([
         { instanceId, processId: 'proc-1', level: 'info', message: 'Info 1', stream: 'stdout' },
         { instanceId, processId: 'proc-1', level: 'info', message: 'Info 2', stream: 'stdout' },
-        { instanceId, processId: 'proc-1', level: 'error', message: 'Error 1', stream: 'stderr' }
+        { instanceId, processId: 'proc-1', level: 'error', message: 'Error 1', stream: 'stderr' },
       ]);
 
       const stats = storage.getLogStats(instanceId);
@@ -1798,171 +1919,193 @@ describe('Integration: Log Management', () => {
 // ============================================================================
 
 describe('Stress: High Frequency Logs', () => {
-  it('should handle 1000+ log lines without data loss', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+  it(
+    'should handle 1000+ log lines without data loss',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'flood', {
-        errorBufferSize: 500
-      });
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'flood', {
+          errorBufferSize: 500,
+        });
 
-      await monitor.start();
+        await monitor.start();
 
-      // Wait for flood to complete
-      await sleep(4000);
+        // Wait for flood to complete
+        await sleep(4000);
 
-      // Get all logs
-      const logs = await monitor.getAllLogsAndReset();
-      const lineCount = logs.split('\n').filter(l => l.trim()).length;
+        // Get all logs
+        const logs = await monitor.getAllLogsAndReset();
+        const lineCount = logs.split('\n').filter((l) => l.trim()).length;
 
-      // Should have captured many logs (some may be trimmed)
-      expect(lineCount).toBeGreaterThan(100);
+        // Should have captured many logs (some may be trimmed)
+        expect(lineCount).toBeGreaterThan(100);
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, STRESS_TIMEOUT);
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    STRESS_TIMEOUT,
+  );
 
-  it('should maintain responsiveness under load', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+  it(
+    'should maintain responsiveness under load',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'flood');
-      await monitor.start();
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'flood');
+        await monitor.start();
 
-      // Measure response time during flood
-      const startTime = Date.now();
-      const state = monitor.getState();
-      const elapsed = Date.now() - startTime;
+        // Measure response time during flood
+        const startTime = Date.now();
+        const state = monitor.getState();
+        const elapsed = Date.now() - startTime;
 
-      expect(state).toBe('running');
-      expect(elapsed).toBeLessThan(100); // Should respond quickly
+        expect(state).toBe('running');
+        expect(elapsed).toBeLessThan(100); // Should respond quickly
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
 });
 
 describe('Stress: Rapid Restarts', () => {
-  it('should handle rapid restart cycles', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+  it(
+    'should handle rapid restart cycles',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'crash', {
-        autoRestart: true,
-        maxRestarts: 5,
-        restartDelay: 50
-      });
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'crash', {
+          autoRestart: true,
+          maxRestarts: 5,
+          restartDelay: 50,
+        });
 
-      let restartCount = 0;
-      monitor.on('process_started', () => {
-        restartCount++;
-      });
+        let restartCount = 0;
+        monitor.on('process_started', () => {
+          restartCount++;
+        });
 
-      await monitor.start();
-
-      // Wait for restart cycles
-      await sleep(3000);
-
-      // Should have restarted multiple times
-      expect(restartCount).toBeGreaterThan(1);
-      expect(restartCount).toBeLessThanOrEqual(6); // Initial + 5 restarts
-
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, STRESS_TIMEOUT);
-
-  it('should not leak resources on rapid start/stop', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
-
-    try {
-      for (let i = 0; i < 5; i++) {
-        const monitor = createTestMonitor(storage, `${instanceId}-${i}`, 'startup');
         await monitor.start();
-        await sleep(100);
-        await monitor.stop();
-        await monitor.cleanup();
-      }
 
-      // If we got here without errors, resources are being cleaned up
-      expect(true).toBe(true);
-    } finally {
-      storage.close();
-    }
-  }, STRESS_TIMEOUT);
+        // Wait for restart cycles
+        await sleep(3000);
+
+        // Should have restarted multiple times
+        expect(restartCount).toBeGreaterThan(1);
+        expect(restartCount).toBeLessThanOrEqual(6); // Initial + 5 restarts
+
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    STRESS_TIMEOUT,
+  );
+
+  it(
+    'should not leak resources on rapid start/stop',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
+
+      try {
+        for (let i = 0; i < 5; i++) {
+          const monitor = createTestMonitor(storage, `${instanceId}-${i}`, 'startup');
+          await monitor.start();
+          await sleep(100);
+          await monitor.stop();
+          await monitor.cleanup();
+        }
+
+        // If we got here without errors, resources are being cleaned up
+        expect(true).toBe(true);
+      } finally {
+        storage.close();
+      }
+    },
+    STRESS_TIMEOUT,
+  );
 });
 
 describe('Stress: Concurrent Access', () => {
-  it('should handle concurrent log reads', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+  it(
+    'should handle concurrent log reads',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'startup');
-      await monitor.start();
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'startup');
+        await monitor.start();
 
-      // Concurrent reads
-      const reads = await Promise.all([
-        monitor.getAllLogsAndReset(),
-        monitor.getAllLogsAndReset(),
-        monitor.getAllLogsAndReset(),
-        monitor.getRecentLogs(50),
-        monitor.getRecentLogs(50)
-      ]);
+        // Concurrent reads
+        const reads = await Promise.all([
+          monitor.getAllLogsAndReset(),
+          monitor.getAllLogsAndReset(),
+          monitor.getAllLogsAndReset(),
+          monitor.getRecentLogs(50),
+          monitor.getRecentLogs(50),
+        ]);
 
-      // All reads should complete without error
-      for (const result of reads) {
-        expect(result).toBeDefined();
+        // All reads should complete without error
+        for (const result of reads) {
+          expect(result).toBeDefined();
+        }
+
+        await monitor.cleanup();
+      } finally {
+        storage.close();
       }
-
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+    },
+    TEST_TIMEOUT,
+  );
 
   it('should handle concurrent error storage', async () => {
     const instanceId = getTestInstanceId();
     const storage = new StorageManager(
       join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
+      join(testDataDir, `${instanceId}-logs.db`),
     );
 
     try {
       // Concurrent error writes
       const writes = await Promise.all(
         Array.from({ length: 10 }, (_, i) =>
-          Promise.resolve(storage.storeError(instanceId, 'proc-1', {
-            timestamp: new Date().toISOString(),
-            level: 50,
-            message: `Concurrent error ${i}`,
-            rawOutput: '{}'
-          }))
-        )
+          Promise.resolve(
+            storage.storeError(instanceId, 'proc-1', {
+              timestamp: new Date().toISOString(),
+              level: 50,
+              message: `Concurrent error ${i}`,
+              rawOutput: '{}',
+            }),
+          ),
+        ),
       );
 
       // All writes should succeed
@@ -1982,115 +2125,127 @@ describe('Stress: Concurrent Access', () => {
 });
 
 describe('Stress: Process Killing', () => {
-  it('should handle SIGTERM during running state', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+  it(
+    'should handle SIGTERM during running state',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'startup');
-      await monitor.start();
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'startup');
+        await monitor.start();
 
-      // Immediate stop
-      const stopResult = await monitor.stop();
-      expect(stopResult.success).toBe(true);
-      expect(monitor.getState()).toBe('stopped');
+        // Immediate stop
+        const stopResult = await monitor.stop();
+        expect(stopResult.success).toBe(true);
+        expect(monitor.getState()).toBe('stopped');
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
 
-  it('should handle stop during starting state gracefully', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+  it(
+    'should handle stop during starting state gracefully',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'slowStartup');
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'slowStartup');
 
-      // Start but don't wait
-      const startPromise = monitor.start();
+        // Start but don't wait
+        const startPromise = monitor.start();
 
-      // Small delay then stop
-      await sleep(50);
-      const stopResult = await monitor.stop();
+        // Small delay then stop
+        await sleep(50);
+        const stopResult = await monitor.stop();
 
-      // Should either succeed or return error (not crash)
-      expect(stopResult).toBeDefined();
+        // Should either succeed or return error (not crash)
+        expect(stopResult).toBeDefined();
 
-      await startPromise.catch(() => {}); // Handle any start errors
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+        await startPromise.catch(() => {}); // Handle any start errors
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
 
-  it('should terminate subprocess tree on stop', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+  it(
+    'should terminate subprocess tree on stop',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-    const spawnChildScript = `
+      const spawnChildScript = `
       const { spawn } = require('child_process');
       const child = spawn('bun', ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
       console.log(JSON.stringify({ level: 30, msg: 'CHILD_PID:' + child.pid, time: Date.now() }));
       setInterval(() => {}, 1000);
     `;
 
-    try {
-      const monitor = new ProcessMonitor(
-        {
-          id: `proc-${instanceId}`,
-          instanceId,
-          command: 'bun',
-          args: ['-e', spawnChildScript],
-          cwd: testDataDir,
-          restartCount: 0
-        },
-        storage,
-        {
-          ...DEFAULT_MONITORING_OPTIONS,
-          healthCheckInterval: 1000,
-          autoRestart: false
-        }
-      );
-
-      await monitor.start();
-      await sleep(300);
-
-      const logs = monitor.getRecentLogs(200);
-      const childLine = logs.find((line) => line.content.includes('CHILD_PID:'));
-      expect(childLine).toBeDefined();
-
-      const match = childLine?.content.match(/CHILD_PID:(\d+)/);
-      expect(match).toBeTruthy();
-      const childPid = Number(match?.[1]);
-      expect(Number.isFinite(childPid)).toBe(true);
-
-      await monitor.stop();
-
-      let childAlive = true;
       try {
-        process.kill(childPid, 0);
-      } catch {
-        childAlive = false;
+        const monitor = new ProcessMonitor(
+          {
+            id: `proc-${instanceId}`,
+            instanceId,
+            command: 'bun',
+            args: ['-e', spawnChildScript],
+            cwd: testDataDir,
+            restartCount: 0,
+          },
+          storage,
+          {
+            ...DEFAULT_MONITORING_OPTIONS,
+            healthCheckInterval: 1000,
+            autoRestart: false,
+          },
+        );
+
+        await monitor.start();
+        await sleep(300);
+
+        const logs = monitor.getRecentLogs(200);
+        const childLine = logs.find((line) => line.content.includes('CHILD_PID:'));
+        expect(childLine).toBeDefined();
+
+        const match = childLine?.content.match(/CHILD_PID:(\d+)/);
+        expect(match).toBeTruthy();
+        const childPid = Number(match?.[1]);
+        expect(Number.isFinite(childPid)).toBe(true);
+
+        await monitor.stop();
+
+        let childAlive = true;
+        try {
+          process.kill(childPid, 0);
+        } catch {
+          childAlive = false;
+        }
+
+        expect(childAlive).toBe(false);
+
+        await monitor.cleanup();
+      } finally {
+        storage.close();
       }
-
-      expect(childAlive).toBe(false);
-
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+    },
+    TEST_TIMEOUT,
+  );
 });
 
 // ============================================================================
@@ -2098,209 +2253,235 @@ describe('Stress: Process Killing', () => {
 // ============================================================================
 
 describe('Scenarios: Vite Dev Server', () => {
-  it('should detect successful startup', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+  it(
+    'should detect successful startup',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'startup');
-      await monitor.start();
-      await sleep(500);
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'startup');
+        await monitor.start();
+        await sleep(500);
 
-      const logs = await monitor.getAllLogsAndReset();
-      expect(logs).toContain('VITE');
-      expect(logs).toContain('ready');
+        const logs = await monitor.getAllLogsAndReset();
+        expect(logs).toContain('VITE');
+        expect(logs).toContain('ready');
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
-
-  it('should capture compilation errors', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
-
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'compilationError');
-      // Set up event listener BEFORE starting to avoid race condition
-      const errorPromise = waitForEvent(monitor, 'error_detected');
-      await monitor.start();
-      await errorPromise;
-
-      const errors = storage.getErrors(instanceId);
-      if (errors.success && errors.data.length > 0) {
-        expect(errors.data.some(e => e.message.includes('SyntaxError'))).toBe(true);
+        await monitor.cleanup();
+      } finally {
+        storage.close();
       }
+    },
+    TEST_TIMEOUT,
+  );
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+  it(
+    'should capture compilation errors',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-  it('should handle EADDRINUSE gracefully', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'compilationError');
+        // Set up event listener BEFORE starting to avoid race condition
+        const errorPromise = waitForEvent(monitor, 'error_detected');
+        await monitor.start();
+        await errorPromise;
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'portConflict', {
-        autoRestart: false
-      });
+        const errors = storage.getErrors(instanceId);
+        if (errors.success && errors.data.length > 0) {
+          expect(errors.data.some((e) => e.message.includes('SyntaxError'))).toBe(true);
+        }
 
-      const crashPromise = waitForEvent(monitor, 'process_crashed', SHORT_TIMEOUT);
-      await monitor.start();
-      await crashPromise;
-
-      expect(monitor.getState()).toBe('crashed');
-
-      const errors = storage.getErrors(instanceId);
-      if (errors.success && errors.data.length > 0) {
-        expect(errors.data.some(e => e.message.includes('EADDRINUSE'))).toBe(true);
+        await monitor.cleanup();
+      } finally {
+        storage.close();
       }
+    },
+    TEST_TIMEOUT,
+  );
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+  it(
+    'should handle EADDRINUSE gracefully',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-  it('should restart on crash up to maxRestarts', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'portConflict', {
+          autoRestart: false,
+        });
 
-    try {
-      const maxRestarts = 2;
-      const monitor = createTestMonitor(storage, instanceId, 'crash', {
-        autoRestart: true,
-        maxRestarts,
-        restartDelay: 100
-      });
+        const crashPromise = waitForEvent(monitor, 'process_crashed', SHORT_TIMEOUT);
+        await monitor.start();
+        await crashPromise;
 
-      let startCount = 0;
-      let crashCount = 0;
+        expect(monitor.getState()).toBe('crashed');
 
-      monitor.on('process_started', () => startCount++);
-      monitor.on('process_crashed', () => crashCount++);
+        const errors = storage.getErrors(instanceId);
+        if (errors.success && errors.data.length > 0) {
+          expect(errors.data.some((e) => e.message.includes('EADDRINUSE'))).toBe(true);
+        }
 
-      await monitor.start();
-
-      // Wait for all restart attempts
-      await sleep(3000);
-
-      // Should have exhausted all restart attempts
-      expect(crashCount).toBe(maxRestarts + 1);
-      expect(startCount).toBe(maxRestarts + 1);
-
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, STRESS_TIMEOUT);
-
-  it('should emit health_check_failed for unresponsive process', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
-
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'hang', {
-        healthCheckInterval: 500, // Very short for testing
-        autoRestart: false
-      });
-
-      let healthFailed = false;
-      monitor.on('health_check_failed', () => {
-        healthFailed = true;
-      });
-
-      await monitor.start();
-
-      // Wait for health check to fail (need 2x interval with no activity)
-      await sleep(2000);
-
-      expect(healthFailed).toBe(true);
-
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
-
-  it('should handle React error boundary crashes', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
-
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'reactCrash');
-
-      const errorPromise = waitForEvent(monitor, 'error_detected');
-      await monitor.start();
-      await errorPromise;
-
-      const errors = storage.getErrors(instanceId);
-      if (errors.success) {
-        expect(errors.data.some(e =>
-          e.message.includes('TypeError') || e.message.includes('React')
-        )).toBe(true);
+        await monitor.cleanup();
+      } finally {
+        storage.close();
       }
+    },
+    TEST_TIMEOUT,
+  );
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+  it(
+    'should restart on crash up to maxRestarts',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-  it('should distinguish between graceful and forced shutdown', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+      try {
+        const maxRestarts = 2;
+        const monitor = createTestMonitor(storage, instanceId, 'crash', {
+          autoRestart: true,
+          maxRestarts,
+          restartDelay: 100,
+        });
 
-    try {
-      // Test graceful shutdown (clean exit)
-      const monitor1 = createTestMonitor(storage, `${instanceId}-1`, 'cleanExit', {
-        autoRestart: false
-      });
-      await monitor1.start();
-      await waitForState(monitor1, 'stopped', SHORT_TIMEOUT);
+        let startCount = 0;
+        let crashCount = 0;
 
-      // Should be stopped, not crashed
-      expect(monitor1.getState()).toBe('stopped');
-      await monitor1.cleanup();
+        monitor.on('process_started', () => startCount++);
+        monitor.on('process_crashed', () => crashCount++);
 
-      // Test forced shutdown (crash)
-      const monitor2 = createTestMonitor(storage, `${instanceId}-2`, 'crash', {
-        autoRestart: false
-      });
-      await monitor2.start();
-      await waitForState(monitor2, 'crashed', SHORT_TIMEOUT);
+        await monitor.start();
 
-      // Should be crashed
-      expect(monitor2.getState()).toBe('crashed');
-      await monitor2.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+        // Wait for all restart attempts
+        await sleep(3000);
+
+        // Should have exhausted all restart attempts
+        expect(crashCount).toBe(maxRestarts + 1);
+        expect(startCount).toBe(maxRestarts + 1);
+
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    STRESS_TIMEOUT,
+  );
+
+  it(
+    'should emit health_check_failed for unresponsive process',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
+
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'hang', {
+          healthCheckInterval: 500, // Very short for testing
+          autoRestart: false,
+        });
+
+        let healthFailed = false;
+        monitor.on('health_check_failed', () => {
+          healthFailed = true;
+        });
+
+        await monitor.start();
+
+        // Wait for health check to fail (need 2x interval with no activity)
+        await sleep(2000);
+
+        expect(healthFailed).toBe(true);
+
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    'should handle React error boundary crashes',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
+
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'reactCrash');
+
+        const errorPromise = waitForEvent(monitor, 'error_detected');
+        await monitor.start();
+        await errorPromise;
+
+        const errors = storage.getErrors(instanceId);
+        if (errors.success) {
+          expect(errors.data.some((e) => e.message.includes('TypeError') || e.message.includes('React'))).toBe(true);
+        }
+
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
+
+  it(
+    'should distinguish between graceful and forced shutdown',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
+
+      try {
+        // Test graceful shutdown (clean exit)
+        const monitor1 = createTestMonitor(storage, `${instanceId}-1`, 'cleanExit', {
+          autoRestart: false,
+        });
+        await monitor1.start();
+        await waitForState(monitor1, 'stopped', SHORT_TIMEOUT);
+
+        // Should be stopped, not crashed
+        expect(monitor1.getState()).toBe('stopped');
+        await monitor1.cleanup();
+
+        // Test forced shutdown (crash)
+        const monitor2 = createTestMonitor(storage, `${instanceId}-2`, 'crash', {
+          autoRestart: false,
+        });
+        await monitor2.start();
+        await waitForState(monitor2, 'crashed', SHORT_TIMEOUT);
+
+        // Should be crashed
+        expect(monitor2.getState()).toBe('crashed');
+        await monitor2.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
 });
 
 // ============================================================================
@@ -2308,170 +2489,190 @@ describe('Scenarios: Vite Dev Server', () => {
 // ============================================================================
 
 describe('Monitor Logs: Coherent Log Streams', () => {
-  it('should include monitor logs for process lifecycle events', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+  it(
+    'should include monitor logs for process lifecycle events',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'startup');
-      await monitor.start();
-      await sleep(500);
-      await monitor.stop();
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'startup');
+        await monitor.start();
+        await sleep(500);
+        await monitor.stop();
 
-      const logs = await monitor.getAllLogsAndReset();
+        const logs = await monitor.getAllLogsAndReset();
 
-      // Should have monitor logs for process creation and start
-      expect(logs).toContain('[MONITOR]');
-      expect(logs).toContain('Starting process');
-      expect(logs).toContain('Process started successfully');
-      expect(logs).toContain('PID=');
+        // Should have monitor logs for process creation and start
+        expect(logs).toContain('[MONITOR]');
+        expect(logs).toContain('Starting process');
+        expect(logs).toContain('Process started successfully');
+        expect(logs).toContain('PID=');
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
 
-  it('should log crash events and restart attempts coherently', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+  it(
+    'should log crash events and restart attempts coherently',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'crash', {
-        autoRestart: true,
-        maxRestarts: 2,
-        restartDelay: 100
-      });
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'crash', {
+          autoRestart: true,
+          maxRestarts: 2,
+          restartDelay: 100,
+        });
 
-      await monitor.start();
+        await monitor.start();
 
-      // Wait for restart cycles to complete
-      await sleep(2500);
+        // Wait for restart cycles to complete
+        await sleep(2500);
 
-      const logs = await monitor.getAllLogsAndReset();
+        const logs = await monitor.getAllLogsAndReset();
 
-      // Should have multiple lifecycle events documented
-      expect(logs).toContain('[MONITOR]');
-      expect(logs).toContain('Process crashed');
-      expect(logs).toContain('Scheduling restart');
-      expect(logs).toContain('attempt=1');
-      expect(logs).toContain('attempt=2');
+        // Should have multiple lifecycle events documented
+        expect(logs).toContain('[MONITOR]');
+        expect(logs).toContain('Process crashed');
+        expect(logs).toContain('Scheduling restart');
+        expect(logs).toContain('attempt=1');
+        expect(logs).toContain('attempt=2');
 
-      // Should document max restarts reached
-      expect(logs).toContain('maxRestarts');
+        // Should document max restarts reached
+        expect(logs).toContain('maxRestarts');
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, STRESS_TIMEOUT);
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    STRESS_TIMEOUT,
+  );
 
-  it('should maintain coherent log stream across multiple restarts', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+  it(
+    'should maintain coherent log stream across multiple restarts',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'crash', {
-        autoRestart: true,
-        maxRestarts: 3,
-        restartDelay: 50
-      });
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'crash', {
+          autoRestart: true,
+          maxRestarts: 3,
+          restartDelay: 50,
+        });
 
-      let startCount = 0;
-      monitor.on('process_started', () => startCount++);
+        let startCount = 0;
+        monitor.on('process_started', () => startCount++);
 
-      await monitor.start();
+        await monitor.start();
 
-      // Wait for all restart cycles
-      await sleep(3000);
+        // Wait for all restart cycles
+        await sleep(3000);
 
-      const logs = await monitor.getAllLogsAndReset();
-      const logLines = logs.split('\n');
+        const logs = await monitor.getAllLogsAndReset();
+        const logLines = logs.split('\n');
 
-      // Find all monitor log lines
-      const monitorLogs = logLines.filter(line => line.includes('[MONITOR]'));
+        // Find all monitor log lines
+        const monitorLogs = logLines.filter((line) => line.includes('[MONITOR]'));
 
-      // Should have at least: start, crash, restart schedule, start, crash... for each cycle
-      expect(monitorLogs.length).toBeGreaterThanOrEqual(8); // At least 2 events per restart cycle
+        // Should have at least: start, crash, restart schedule, start, crash... for each cycle
+        expect(monitorLogs.length).toBeGreaterThanOrEqual(8); // At least 2 events per restart cycle
 
-      // Verify chronological order - each "Starting process" should be followed by "Process started" or error
-      const startingLogs = monitorLogs.filter(l => l.includes('Starting process'));
-      const startedLogs = monitorLogs.filter(l => l.includes('Process started successfully'));
-      const crashedLogs = monitorLogs.filter(l => l.includes('Process crashed'));
+        // Verify chronological order - each "Starting process" should be followed by "Process started" or error
+        const startingLogs = monitorLogs.filter((l) => l.includes('Starting process'));
+        const startedLogs = monitorLogs.filter((l) => l.includes('Process started successfully'));
+        const crashedLogs = monitorLogs.filter((l) => l.includes('Process crashed'));
 
-      // Should have starts + crashes = total runs
-      expect(startingLogs.length).toBe(startCount);
-      expect(crashedLogs.length).toBeGreaterThanOrEqual(startCount - 1);
+        // Should have starts + crashes = total runs
+        expect(startingLogs.length).toBe(startCount);
+        expect(crashedLogs.length).toBeGreaterThanOrEqual(startCount - 1);
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, STRESS_TIMEOUT);
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    STRESS_TIMEOUT,
+  );
 
-  it('should include runtime duration in exit logs', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+  it(
+    'should include runtime duration in exit logs',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'cleanExit', {
-        autoRestart: false
-      });
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'cleanExit', {
+          autoRestart: false,
+        });
 
-      await monitor.start();
-      await waitForState(monitor, 'stopped', SHORT_TIMEOUT);
+        await monitor.start();
+        await waitForState(monitor, 'stopped', SHORT_TIMEOUT);
 
-      const logs = await monitor.getAllLogsAndReset();
+        const logs = await monitor.getAllLogsAndReset();
 
-      // Should log runtime information on exit
-      expect(logs).toContain('[MONITOR]');
-      expect(logs).toContain('runtime=');
-      expect(logs).toContain('exitCode=0');
+        // Should log runtime information on exit
+        expect(logs).toContain('[MONITOR]');
+        expect(logs).toContain('runtime=');
+        expect(logs).toContain('exitCode=0');
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
 
-  it('should log stop request and graceful shutdown', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+  it(
+    'should log stop request and graceful shutdown',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-    try {
-      const monitor = createTestMonitor(storage, instanceId, 'startup');
-      await monitor.start();
-      await sleep(300);
-      await monitor.stop();
+      try {
+        const monitor = createTestMonitor(storage, instanceId, 'startup');
+        await monitor.start();
+        await sleep(300);
+        await monitor.stop();
 
-      const logs = await monitor.getAllLogsAndReset();
+        const logs = await monitor.getAllLogsAndReset();
 
-      // Should log stop request and clean exit
-      expect(logs).toContain('[MONITOR]');
-      expect(logs).toContain('Stop requested');
-      // Process exits cleanly via SIGTERM (exit event comes first, marking it as clean exit)
-      expect(logs).toContain('exited cleanly');
+        // Should log stop request and clean exit
+        expect(logs).toContain('[MONITOR]');
+        expect(logs).toContain('Stop requested');
+        // Process exits cleanly via SIGTERM (exit event comes first, marking it as clean exit)
+        expect(logs).toContain('exited cleanly');
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
 });
 
 // ============================================================================
@@ -2511,174 +2712,190 @@ describe('Health Check: Port Monitoring', () => {
     setInterval(() => {}, 1000);
   `;
 
-  it('should detect when expected port is bound', async () => {
-    const instanceId = getTestInstanceId();
-    const testPort = 19000 + Math.floor(Math.random() * 1000); // Random port to avoid conflicts
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
-
-    try {
-      const monitor = new ProcessMonitor(
-        {
-          id: `proc-${instanceId}`,
-          instanceId,
-          command: 'bun',
-          args: ['-e', createPortBindScript(testPort)],
-          cwd: testDataDir,
-          restartCount: 0
-        },
-        storage,
-        {
-          ...DEFAULT_MONITORING_OPTIONS,
-          expectedPort: testPort,
-          healthCheckInterval: 500,
-          autoRestart: false
-        }
+  it(
+    'should detect when expected port is bound',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const testPort = 19000 + Math.floor(Math.random() * 1000); // Random port to avoid conflicts
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
       );
 
-      await monitor.start();
+      try {
+        const monitor = new ProcessMonitor(
+          {
+            id: `proc-${instanceId}`,
+            instanceId,
+            command: 'bun',
+            args: ['-e', createPortBindScript(testPort)],
+            cwd: testDataDir,
+            restartCount: 0,
+          },
+          storage,
+          {
+            ...DEFAULT_MONITORING_OPTIONS,
+            expectedPort: testPort,
+            healthCheckInterval: 500,
+            autoRestart: false,
+          },
+        );
 
-      // Wait for port to bind and health check to run
-      await sleep(1500);
+        await monitor.start();
 
-      const logs = await monitor.getAllLogsAndReset();
+        // Wait for port to bind and health check to run
+        await sleep(1500);
 
-      // Should log when port starts accepting connections
-      expect(logs).toContain('[MONITOR]');
-      expect(logs).toContain(`Port ${testPort}`);
-      expect(logs).toContain('accepting connections');
+        const logs = await monitor.getAllLogsAndReset();
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+        // Should log when port starts accepting connections
+        expect(logs).toContain('[MONITOR]');
+        expect(logs).toContain(`Port ${testPort}`);
+        expect(logs).toContain('accepting connections');
 
-  it('should report health issue when expected port is not bound', async () => {
-    const instanceId = getTestInstanceId();
-    const testPort = 19000 + Math.floor(Math.random() * 1000);
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
 
-    try {
-      const monitor = new ProcessMonitor(
-        {
-          id: `proc-${instanceId}`,
-          instanceId,
-          command: 'bun',
-          args: ['-e', noPortBindScript],
-          cwd: testDataDir,
-          restartCount: 0
-        },
-        storage,
-        {
-          ...DEFAULT_MONITORING_OPTIONS,
-          expectedPort: testPort,
-          healthCheckInterval: 500,
-          autoRestart: false
-        }
+  it(
+    'should report health issue when expected port is not bound',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const testPort = 19000 + Math.floor(Math.random() * 1000);
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
       );
 
-      let healthCheckFailed = false;
-      monitor.on('health_check_failed', () => {
-        healthCheckFailed = true;
-      });
+      try {
+        const monitor = new ProcessMonitor(
+          {
+            id: `proc-${instanceId}`,
+            instanceId,
+            command: 'bun',
+            args: ['-e', noPortBindScript],
+            cwd: testDataDir,
+            restartCount: 0,
+          },
+          storage,
+          {
+            ...DEFAULT_MONITORING_OPTIONS,
+            expectedPort: testPort,
+            healthCheckInterval: 500,
+            autoRestart: false,
+          },
+        );
 
-      await monitor.start();
+        let healthCheckFailed = false;
+        monitor.on('health_check_failed', () => {
+          healthCheckFailed = true;
+        });
 
-      // Wait for health check to detect missing port (needs 2x healthCheckInterval with no port)
-      await sleep(2000);
+        await monitor.start();
 
-      // Should have detected the missing port
-      expect(healthCheckFailed).toBe(true);
+        // Wait for health check to detect missing port (needs 2x healthCheckInterval with no port)
+        await sleep(2000);
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+        // Should have detected the missing port
+        expect(healthCheckFailed).toBe(true);
 
-  it('should include expectedPort in startup log', async () => {
-    const instanceId = getTestInstanceId();
-    const testPort = 19000 + Math.floor(Math.random() * 1000);
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
 
-    try {
-      // Create monitor with expectedPort option
-      const monitor = new ProcessMonitor(
-        {
-          id: `proc-${instanceId}`,
-          instanceId,
-          command: 'bun',
-          args: ['-e', MOCK_SCRIPTS.startup],
-          cwd: testDataDir,
-          restartCount: 0
-        },
-        storage,
-        {
-          ...DEFAULT_MONITORING_OPTIONS,
-          expectedPort: testPort,
-          healthCheckInterval: 1000,
-          autoRestart: false
-        }
+  it(
+    'should include expectedPort in startup log',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const testPort = 19000 + Math.floor(Math.random() * 1000);
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
       );
 
-      await monitor.start();
-      await sleep(500);
+      try {
+        // Create monitor with expectedPort option
+        const monitor = new ProcessMonitor(
+          {
+            id: `proc-${instanceId}`,
+            instanceId,
+            command: 'bun',
+            args: ['-e', MOCK_SCRIPTS.startup],
+            cwd: testDataDir,
+            restartCount: 0,
+          },
+          storage,
+          {
+            ...DEFAULT_MONITORING_OPTIONS,
+            expectedPort: testPort,
+            healthCheckInterval: 1000,
+            autoRestart: false,
+          },
+        );
 
-      const logs = await monitor.getAllLogsAndReset();
+        await monitor.start();
+        await sleep(500);
 
-      // Should include port info in startup log
-      expect(logs).toContain('[MONITOR]');
-      expect(logs).toContain(`expectedPort=${testPort}`);
+        const logs = await monitor.getAllLogsAndReset();
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+        // Should include port info in startup log
+        expect(logs).toContain('[MONITOR]');
+        expect(logs).toContain(`expectedPort=${testPort}`);
 
-  it('should check PID liveness during health check', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
 
-    try {
-      // Use hang script which produces no output - this will trigger health check
-      const monitor = createTestMonitor(storage, instanceId, 'hang', {
-        healthCheckInterval: 300,
-        autoRestart: false
-      });
+  it(
+    'should check PID liveness during health check',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
+      );
 
-      let healthCheckEvents: MonitoringEvent[] = [];
-      monitor.on('health_check_failed', (event) => {
-        healthCheckEvents.push(event);
-      });
+      try {
+        // Use hang script which produces no output - this will trigger health check
+        const monitor = createTestMonitor(storage, instanceId, 'hang', {
+          healthCheckInterval: 300,
+          autoRestart: false,
+        });
 
-      await monitor.start();
+        let healthCheckEvents: MonitoringEvent[] = [];
+        monitor.on('health_check_failed', (event) => {
+          healthCheckEvents.push(event);
+        });
 
-      // Wait for health checks to run
-      await sleep(1500);
+        await monitor.start();
 
-      // Health check should have run (due to inactivity) but PID should still be alive
-      // So we shouldn't get "PID not responding" - just inactivity warnings
-      const hasInactivityWarning = healthCheckEvents.length > 0;
-      expect(hasInactivityWarning).toBe(true);
+        // Wait for health checks to run
+        await sleep(1500);
 
-      await monitor.cleanup();
-    } finally {
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+        // Health check should have run (due to inactivity) but PID should still be alive
+        // So we shouldn't get "PID not responding" - just inactivity warnings
+        const hasInactivityWarning = healthCheckEvents.length > 0;
+        expect(hasInactivityWarning).toBe(true);
+
+        await monitor.cleanup();
+      } finally {
+        storage.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
 });
 
 // ============================================================================
@@ -2686,75 +2903,79 @@ describe('Health Check: Port Monitoring', () => {
 // ============================================================================
 
 describe('Health Check: Port Liveness Restart', () => {
-  it('should restart when previously responsive port becomes unresponsive', async () => {
-    const instanceId = getTestInstanceId();
-    const storage = new StorageManager(
-      join(testDataDir, `${instanceId}-errors.db`),
-      join(testDataDir, `${instanceId}-logs.db`)
-    );
-
-    const originalFetch = globalThis.fetch;
-    let callCount = 0;
-
-    try {
-      // First probe succeeds (marks port confirmed), next two fail (triggers restart), then succeed again.
-      globalThis.fetch = (async () => {
-        callCount += 1;
-        if (callCount === 1 || callCount >= 4) {
-          return new Response('OK', { status: 200 });
-        }
-        throw new Error('ECONNREFUSED');
-      }) as typeof fetch;
-
-      const testPort = 19000 + Math.floor(Math.random() * 1000);
-
-      const monitor = new ProcessMonitor(
-        {
-          id: `proc-${instanceId}`,
-          instanceId,
-          command: 'bun',
-          args: ['-e', MOCK_SCRIPTS.hang],
-          cwd: testDataDir,
-          restartCount: 0
-        },
-        storage,
-        {
-          ...DEFAULT_MONITORING_OPTIONS,
-          expectedPort: testPort,
-          healthCheckInterval: 50,
-          restartDelay: 10,
-          maxRestarts: 2,
-          autoRestart: true
-        }
+  it(
+    'should restart when previously responsive port becomes unresponsive',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const storage = new StorageManager(
+        join(testDataDir, `${instanceId}-errors.db`),
+        join(testDataDir, `${instanceId}-logs.db`),
       );
 
-      let startedCount = 0;
-      const startedTwice = new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          reject(new Error('Timeout waiting for second process start'));
-        }, TEST_TIMEOUT);
+      const originalFetch = globalThis.fetch;
+      let callCount = 0;
 
-        monitor.on('process_started', () => {
-          startedCount += 1;
-          if (startedCount >= 2) {
-            clearTimeout(timeout);
-            resolve();
+      try {
+        // First probe succeeds (marks port confirmed), next two fail (triggers restart), then succeed again.
+        globalThis.fetch = (async () => {
+          callCount += 1;
+          if (callCount === 1 || callCount >= 4) {
+            return new Response('OK', { status: 200 });
           }
+          throw new Error('ECONNREFUSED');
+        }) as typeof fetch;
+
+        const testPort = 19000 + Math.floor(Math.random() * 1000);
+
+        const monitor = new ProcessMonitor(
+          {
+            id: `proc-${instanceId}`,
+            instanceId,
+            command: 'bun',
+            args: ['-e', MOCK_SCRIPTS.hang],
+            cwd: testDataDir,
+            restartCount: 0,
+          },
+          storage,
+          {
+            ...DEFAULT_MONITORING_OPTIONS,
+            expectedPort: testPort,
+            healthCheckInterval: 50,
+            restartDelay: 10,
+            maxRestarts: 2,
+            autoRestart: true,
+          },
+        );
+
+        let startedCount = 0;
+        const startedTwice = new Promise<void>((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error('Timeout waiting for second process start'));
+          }, TEST_TIMEOUT);
+
+          monitor.on('process_started', () => {
+            startedCount += 1;
+            if (startedCount >= 2) {
+              clearTimeout(timeout);
+              resolve();
+            }
+          });
         });
-      });
 
-      await monitor.start();
-      await startedTwice;
+        await monitor.start();
+        await startedTwice;
 
-      const logs = await monitor.getAllLogsAndReset();
-      expect(logs).toContain('Health-triggered restart');
+        const logs = await monitor.getAllLogsAndReset();
+        expect(logs).toContain('Health-triggered restart');
 
-      await monitor.cleanup();
-    } finally {
-      globalThis.fetch = originalFetch;
-      storage.close();
-    }
-  }, TEST_TIMEOUT);
+        await monitor.cleanup();
+      } finally {
+        globalThis.fetch = originalFetch;
+        storage.close();
+      }
+    },
+    TEST_TIMEOUT,
+  );
 });
 
 // ============================================================================
@@ -2762,150 +2983,158 @@ describe('Health Check: Port Liveness Restart', () => {
 // ============================================================================
 
 describe('CLI: Monitoring Flag Wiring', () => {
-  it('should apply port-based monitoring defaults when only --port is provided', async () => {
-    const instanceId = getTestInstanceId();
-    const port = 20000 + Math.floor(Math.random() * 1000);
+  it(
+    'should apply port-based monitoring defaults when only --port is provided',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const port = 20000 + Math.floor(Math.random() * 1000);
 
-    const child = spawn(
-      'bun',
-      [
-        'run',
-        'cli-tools.ts',
-        'process',
-        'start',
-        '-i',
-        instanceId,
-        '--port',
-        String(port),
-        '--',
+      const child = spawn(
         'bun',
-        '-e',
-        'setInterval(() => {}, 1000)'
-      ],
-      {
-        cwd: process.cwd(),
-        env: { ...process.env },
-        stdio: ['ignore', 'pipe', 'pipe']
+        [
+          'run',
+          'cli-tools.ts',
+          'process',
+          'start',
+          '-i',
+          instanceId,
+          '--port',
+          String(port),
+          '--',
+          'bun',
+          '-e',
+          'setInterval(() => {}, 1000)',
+        ],
+        {
+          cwd: process.cwd(),
+          env: { ...process.env },
+          stdio: ['ignore', 'pipe', 'pipe'],
+        },
+      );
+
+      let stdout = '';
+
+      const waitForConfiguredOutput = new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Timeout waiting for CLI configuration output'));
+        }, SHORT_TIMEOUT);
+
+        child.stdout?.on('data', (chunk: Buffer) => {
+          stdout += chunk.toString('utf8');
+          if (
+            stdout.includes('Health Check Interval: 10000ms') &&
+            stdout.includes('Restart Delay: 1000ms') &&
+            stdout.includes('Max Restarts: 120') &&
+            stdout.includes(`Expected Port: ${port}`)
+          ) {
+            clearTimeout(timeout);
+            resolve();
+          }
+        });
+
+        child.stderr?.on('data', (chunk: Buffer) => {
+          stdout += chunk.toString('utf8');
+        });
+
+        child.on('error', reject);
+      });
+
+      try {
+        await waitForConfiguredOutput;
+        expect(stdout).toContain('Starting Process Monitor');
+        expect(stdout).toContain('Health Check Interval: 10000ms');
+        expect(stdout).toContain('Restart Delay: 1000ms');
+        expect(stdout).toContain('Max Restarts: 120');
+        expect(stdout).toContain(`Expected Port: ${port}`);
+      } finally {
+        child.kill('SIGINT');
+        await new Promise<void>((resolve) => {
+          child.on('exit', () => resolve());
+          setTimeout(() => resolve(), SHORT_TIMEOUT);
+        });
       }
-    );
+    },
+    TEST_TIMEOUT,
+  );
 
-    let stdout = '';
+  it(
+    'should allow overriding port-based defaults via explicit flags',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const port = 20000 + Math.floor(Math.random() * 1000);
 
-    const waitForConfiguredOutput = new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error('Timeout waiting for CLI configuration output'));
-      }, SHORT_TIMEOUT);
-
-      child.stdout?.on('data', (chunk: Buffer) => {
-        stdout += chunk.toString('utf8');
-        if (
-          stdout.includes('Health Check Interval: 10000ms') &&
-          stdout.includes('Restart Delay: 1000ms') &&
-          stdout.includes('Max Restarts: 120') &&
-          stdout.includes(`Expected Port: ${port}`)
-        ) {
-          clearTimeout(timeout);
-          resolve();
-        }
-      });
-
-      child.stderr?.on('data', (chunk: Buffer) => {
-        stdout += chunk.toString('utf8');
-      });
-
-      child.on('error', reject);
-    });
-
-    try {
-      await waitForConfiguredOutput;
-      expect(stdout).toContain('Starting Process Monitor');
-      expect(stdout).toContain('Health Check Interval: 10000ms');
-      expect(stdout).toContain('Restart Delay: 1000ms');
-      expect(stdout).toContain('Max Restarts: 120');
-      expect(stdout).toContain(`Expected Port: ${port}`);
-    } finally {
-      child.kill('SIGINT');
-      await new Promise<void>((resolve) => {
-        child.on('exit', () => resolve());
-        setTimeout(() => resolve(), SHORT_TIMEOUT);
-      });
-    }
-  }, TEST_TIMEOUT);
-
-  it('should allow overriding port-based defaults via explicit flags', async () => {
-    const instanceId = getTestInstanceId();
-    const port = 20000 + Math.floor(Math.random() * 1000);
-
-    const child = spawn(
-      'bun',
-      [
-        'run',
-        'cli-tools.ts',
-        'process',
-        'start',
-        '-i',
-        instanceId,
-        '--port',
-        String(port),
-        '--health-check-interval',
-        '12345',
-        '--max-restarts',
-        '5',
-        '--restart-delay',
-        '2345',
-        '--',
+      const child = spawn(
         'bun',
-        '-e',
-        'setInterval(() => {}, 1000)'
-      ],
-      {
-        cwd: process.cwd(),
-        env: { ...process.env },
-        stdio: ['ignore', 'pipe', 'pipe']
+        [
+          'run',
+          'cli-tools.ts',
+          'process',
+          'start',
+          '-i',
+          instanceId,
+          '--port',
+          String(port),
+          '--health-check-interval',
+          '12345',
+          '--max-restarts',
+          '5',
+          '--restart-delay',
+          '2345',
+          '--',
+          'bun',
+          '-e',
+          'setInterval(() => {}, 1000)',
+        ],
+        {
+          cwd: process.cwd(),
+          env: { ...process.env },
+          stdio: ['ignore', 'pipe', 'pipe'],
+        },
+      );
+
+      let stdout = '';
+
+      const waitForConfiguredOutput = new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Timeout waiting for CLI configuration output'));
+        }, SHORT_TIMEOUT);
+
+        child.stdout?.on('data', (chunk: Buffer) => {
+          stdout += chunk.toString('utf8');
+          if (
+            stdout.includes('Health Check Interval: 12345ms') &&
+            stdout.includes('Restart Delay: 2345ms') &&
+            stdout.includes('Max Restarts: 5') &&
+            stdout.includes(`Expected Port: ${port}`)
+          ) {
+            clearTimeout(timeout);
+            resolve();
+          }
+        });
+
+        child.stderr?.on('data', (chunk: Buffer) => {
+          stdout += chunk.toString('utf8');
+        });
+
+        child.on('error', reject);
+      });
+
+      try {
+        await waitForConfiguredOutput;
+        expect(stdout).toContain('Health Check Interval: 12345ms');
+        expect(stdout).toContain('Restart Delay: 2345ms');
+        expect(stdout).toContain('Max Restarts: 5');
+        expect(stdout).toContain(`Expected Port: ${port}`);
+      } finally {
+        child.kill('SIGINT');
+        await new Promise<void>((resolve) => {
+          child.on('exit', () => resolve());
+          setTimeout(() => resolve(), SHORT_TIMEOUT);
+        });
       }
-    );
-
-    let stdout = '';
-
-    const waitForConfiguredOutput = new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error('Timeout waiting for CLI configuration output'));
-      }, SHORT_TIMEOUT);
-
-      child.stdout?.on('data', (chunk: Buffer) => {
-        stdout += chunk.toString('utf8');
-        if (
-          stdout.includes('Health Check Interval: 12345ms') &&
-          stdout.includes('Restart Delay: 2345ms') &&
-          stdout.includes('Max Restarts: 5') &&
-          stdout.includes(`Expected Port: ${port}`)
-        ) {
-          clearTimeout(timeout);
-          resolve();
-        }
-      });
-
-      child.stderr?.on('data', (chunk: Buffer) => {
-        stdout += chunk.toString('utf8');
-      });
-
-      child.on('error', reject);
-    });
-
-    try {
-      await waitForConfiguredOutput;
-      expect(stdout).toContain('Health Check Interval: 12345ms');
-      expect(stdout).toContain('Restart Delay: 2345ms');
-      expect(stdout).toContain('Max Restarts: 5');
-      expect(stdout).toContain(`Expected Port: ${port}`);
-    } finally {
-      child.kill('SIGINT');
-      await new Promise<void>((resolve) => {
-        child.on('exit', () => resolve());
-        setTimeout(() => resolve(), SHORT_TIMEOUT);
-      });
-    }
-  }, TEST_TIMEOUT);
+    },
+    TEST_TIMEOUT,
+  );
 });
 
 // ============================================================================
@@ -2913,11 +3142,13 @@ describe('CLI: Monitoring Flag Wiring', () => {
 // ============================================================================
 
 describe('Integration: CLI Logs Get', () => {
-  it('should include health restart events in `logs get` output', async () => {
-    const instanceId = getTestInstanceId();
-    const port = 21000 + Math.floor(Math.random() * 1000);
+  it(
+    'should include health restart events in `logs get` output',
+    async () => {
+      const instanceId = getTestInstanceId();
+      const port = 21000 + Math.floor(Math.random() * 1000);
 
-    const serverStopsListeningScript = `
+      const serverStopsListeningScript = `
       const port = Number.parseInt(process.env.PORT || '0', 10);
       const pinoLog = (level, msg) => console.log(JSON.stringify({ level, msg, time: Date.now() }));
 
@@ -2938,98 +3169,100 @@ describe('Integration: CLI Logs Get', () => {
       setInterval(() => {}, 1000);
     `;
 
-    const startProc = spawn(
-      'bun',
-      [
-        'run',
-        'cli-tools.ts',
-        'process',
-        'start',
-        '-i',
-        instanceId,
-        '--port',
-        String(port),
-        '--health-check-interval',
-        '100',
-        '--max-restarts',
-        '1',
-        '--restart-delay',
-        '10',
-        '--',
+      const startProc = spawn(
         'bun',
-        '-e',
-        serverStopsListeningScript
-      ],
-      {
-        cwd: process.cwd(),
-        env: { ...process.env },
-        stdio: ['ignore', 'pipe', 'pipe']
-      }
-    );
-
-    let combinedOutput = '';
-
-    const waitForRestart = new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error('Timeout waiting for CLI to restart process'));
-      }, STRESS_TIMEOUT);
-
-      const onChunk = (chunk: Buffer) => {
-        combinedOutput += chunk.toString('utf8');
-        if (combinedOutput.includes('Scheduling restart') || combinedOutput.includes('Restarting process')) {
-          clearTimeout(timeout);
-          resolve();
-        }
-      };
-
-      startProc.stdout?.on('data', onChunk);
-      startProc.stderr?.on('data', onChunk);
-      startProc.on('error', reject);
-    });
-
-    try {
-      await waitForRestart;
-
-      // Give log file a moment to flush.
-      await sleep(200);
-
-      const getLogsProc = spawn(
-        'bun',
-        ['run', 'cli-tools.ts', 'logs', 'get', '-i', instanceId, '--format', 'raw', '--reset'],
-        { cwd: process.cwd(), env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'] }
+        [
+          'run',
+          'cli-tools.ts',
+          'process',
+          'start',
+          '-i',
+          instanceId,
+          '--port',
+          String(port),
+          '--health-check-interval',
+          '100',
+          '--max-restarts',
+          '1',
+          '--restart-delay',
+          '10',
+          '--',
+          'bun',
+          '-e',
+          serverStopsListeningScript,
+        ],
+        {
+          cwd: process.cwd(),
+          env: { ...process.env },
+          stdio: ['ignore', 'pipe', 'pipe'],
+        },
       );
 
-      let logsOut = '';
-      await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('Timeout reading logs get output')), SHORT_TIMEOUT);
+      let combinedOutput = '';
 
-        getLogsProc.stdout?.on('data', (chunk: Buffer) => {
-          logsOut += chunk.toString('utf8');
-        });
-        getLogsProc.stderr?.on('data', (chunk: Buffer) => {
-          logsOut += chunk.toString('utf8');
-        });
+      const waitForRestart = new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Timeout waiting for CLI to restart process'));
+        }, STRESS_TIMEOUT);
 
-        getLogsProc.on('error', reject);
-        getLogsProc.on('exit', (code) => {
-          clearTimeout(timeout);
-          if (code === 0) resolve();
-          else reject(new Error(`logs get exited with code ${code}`));
-        });
+        const onChunk = (chunk: Buffer) => {
+          combinedOutput += chunk.toString('utf8');
+          if (combinedOutput.includes('Scheduling restart') || combinedOutput.includes('Restarting process')) {
+            clearTimeout(timeout);
+            resolve();
+          }
+        };
+
+        startProc.stdout?.on('data', onChunk);
+        startProc.stderr?.on('data', onChunk);
+        startProc.on('error', reject);
       });
 
-      expect(logsOut).toContain('[monitor]');
-      expect(logsOut).toContain('[MONITOR] Starting process:');
-      expect(logsOut).toContain(`Port ${port} is now accepting connections`);
-      expect(logsOut).toContain('Health-triggered restart: port');
-    } finally {
-      startProc.kill('SIGINT');
-      await new Promise<void>((resolve) => {
-        startProc.on('exit', () => resolve());
-        setTimeout(() => resolve(), SHORT_TIMEOUT);
-      });
-    }
-  }, STRESS_TIMEOUT);
+      try {
+        await waitForRestart;
+
+        // Give log file a moment to flush.
+        await sleep(200);
+
+        const getLogsProc = spawn(
+          'bun',
+          ['run', 'cli-tools.ts', 'logs', 'get', '-i', instanceId, '--format', 'raw', '--reset'],
+          { cwd: process.cwd(), env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'] },
+        );
+
+        let logsOut = '';
+        await new Promise<void>((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error('Timeout reading logs get output')), SHORT_TIMEOUT);
+
+          getLogsProc.stdout?.on('data', (chunk: Buffer) => {
+            logsOut += chunk.toString('utf8');
+          });
+          getLogsProc.stderr?.on('data', (chunk: Buffer) => {
+            logsOut += chunk.toString('utf8');
+          });
+
+          getLogsProc.on('error', reject);
+          getLogsProc.on('exit', (code) => {
+            clearTimeout(timeout);
+            if (code === 0) resolve();
+            else reject(new Error(`logs get exited with code ${code}`));
+          });
+        });
+
+        expect(logsOut).toContain('[monitor]');
+        expect(logsOut).toContain('[MONITOR] Starting process:');
+        expect(logsOut).toContain(`Port ${port} is now accepting connections`);
+        expect(logsOut).toContain('Health-triggered restart: port');
+      } finally {
+        startProc.kill('SIGINT');
+        await new Promise<void>((resolve) => {
+          startProc.on('exit', () => resolve());
+          setTimeout(() => resolve(), SHORT_TIMEOUT);
+        });
+      }
+    },
+    STRESS_TIMEOUT,
+  );
 });
 
 // ============================================================================

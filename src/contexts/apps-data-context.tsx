@@ -36,7 +36,7 @@ interface AppsDataProviderProps {
 
 export function AppsDataProvider({ children }: AppsDataProviderProps) {
   const { user } = useAuth();
-  
+
   const [state, setState] = useState<AppsDataState>({
     allApps: [],
     favoriteApps: [],
@@ -59,7 +59,7 @@ export function AppsDataProvider({ children }: AppsDataProviderProps) {
       const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
       return bTime - aTime;
     });
-    
+
     return {
       recentApps: sortedApps.slice(0, RECENT_APPS_LIMIT),
       moreRecentAvailable: sortedApps.length > RECENT_APPS_LIMIT,
@@ -69,7 +69,7 @@ export function AppsDataProvider({ children }: AppsDataProviderProps) {
   // Fetch all apps
   const fetchAllApps = useCallback(async () => {
     if (!user) {
-      setState(prev => ({
+      setState((prev) => ({
         ...prev,
         allApps: [],
         ...computeRecentApps([]),
@@ -80,19 +80,19 @@ export function AppsDataProvider({ children }: AppsDataProviderProps) {
     }
 
     try {
-      setState(prev => ({
+      setState((prev) => ({
         ...prev,
         loading: { ...prev.loading, allApps: true },
         error: { ...prev.error, allApps: null },
       }));
 
       const response = await apiClient.getUserApps();
-      
+
       if (response.success) {
         const apps = response.data?.apps || [];
         const { recentApps, moreRecentAvailable } = computeRecentApps(apps);
-        
-        setState(prev => ({
+
+        setState((prev) => ({
           ...prev,
           allApps: apps,
           recentApps,
@@ -100,7 +100,7 @@ export function AppsDataProvider({ children }: AppsDataProviderProps) {
           loading: { ...prev.loading, allApps: false },
         }));
       } else {
-        setState(prev => ({
+        setState((prev) => ({
           ...prev,
           loading: { ...prev.loading, allApps: false },
           error: { ...prev.error, allApps: response.error?.message || 'Failed to fetch apps' },
@@ -108,11 +108,14 @@ export function AppsDataProvider({ children }: AppsDataProviderProps) {
       }
     } catch (err) {
       console.error('Error fetching all apps:', err);
-      const errorMessage = err instanceof ApiError 
-        ? `${err.message} (${err.status})`
-        : err instanceof Error ? err.message : 'Failed to fetch apps';
-      
-      setState(prev => ({
+      const errorMessage =
+        err instanceof ApiError
+          ? `${err.message} (${err.status})`
+          : err instanceof Error
+            ? err.message
+            : 'Failed to fetch apps';
+
+      setState((prev) => ({
         ...prev,
         loading: { ...prev.loading, allApps: false },
         error: { ...prev.error, allApps: errorMessage },
@@ -123,7 +126,7 @@ export function AppsDataProvider({ children }: AppsDataProviderProps) {
   // Fetch favorite apps
   const fetchFavoriteApps = useCallback(async () => {
     if (!user) {
-      setState(prev => ({
+      setState((prev) => ({
         ...prev,
         favoriteApps: [],
         loading: { ...prev.loading, favoriteApps: false },
@@ -133,22 +136,22 @@ export function AppsDataProvider({ children }: AppsDataProviderProps) {
     }
 
     try {
-      setState(prev => ({
+      setState((prev) => ({
         ...prev,
         loading: { ...prev.loading, favoriteApps: true },
         error: { ...prev.error, favoriteApps: null },
       }));
 
       const response = await apiClient.getFavoriteApps();
-      
+
       if (response.success) {
-        setState(prev => ({
+        setState((prev) => ({
           ...prev,
           favoriteApps: response.data?.apps || [],
           loading: { ...prev.loading, favoriteApps: false },
         }));
       } else {
-        setState(prev => ({
+        setState((prev) => ({
           ...prev,
           loading: { ...prev.loading, favoriteApps: false },
           error: { ...prev.error, favoriteApps: response.error?.message || 'Failed to fetch favorite apps' },
@@ -156,11 +159,14 @@ export function AppsDataProvider({ children }: AppsDataProviderProps) {
       }
     } catch (err) {
       console.error('Error fetching favorite apps:', err);
-      const errorMessage = err instanceof ApiError
-        ? `${err.message} (${err.status})`
-        : err instanceof Error ? err.message : 'Failed to fetch favorite apps';
-      
-      setState(prev => ({
+      const errorMessage =
+        err instanceof ApiError
+          ? `${err.message} (${err.status})`
+          : err instanceof Error
+            ? err.message
+            : 'Failed to fetch favorite apps';
+
+      setState((prev) => ({
         ...prev,
         loading: { ...prev.loading, favoriteApps: false },
         error: { ...prev.error, favoriteApps: errorMessage },
@@ -171,12 +177,9 @@ export function AppsDataProvider({ children }: AppsDataProviderProps) {
   // Parallel fetch both data sets
   const fetchAll = useCallback(async () => {
     if (!user) return;
-    
+
     // Execute both API calls in parallel
-    await Promise.all([
-      fetchAllApps(),
-      fetchFavoriteApps(),
-    ]);
+    await Promise.all([fetchAllApps(), fetchFavoriteApps()]);
   }, [user, fetchAllApps, fetchFavoriteApps]);
 
   // Initial data load with parallel fetching
@@ -189,11 +192,11 @@ export function AppsDataProvider({ children }: AppsDataProviderProps) {
     const onDeleted = (event: AppEvent) => {
       if (event.type === 'app-deleted') {
         const deletedEvent = event as AppDeletedEvent;
-        setState(prev => {
-          const filteredAllApps = prev.allApps.filter(app => app.id !== deletedEvent.appId);
-          const filteredFavoriteApps = prev.favoriteApps.filter(app => app.id !== deletedEvent.appId);
+        setState((prev) => {
+          const filteredAllApps = prev.allApps.filter((app) => app.id !== deletedEvent.appId);
+          const filteredFavoriteApps = prev.favoriteApps.filter((app) => app.id !== deletedEvent.appId);
           const { recentApps, moreRecentAvailable } = computeRecentApps(filteredAllApps);
-          
+
           return {
             ...prev,
             allApps: filteredAllApps,
@@ -204,34 +207,30 @@ export function AppsDataProvider({ children }: AppsDataProviderProps) {
         });
       }
     };
-    
+
     const onCreated = () => {
       // Refetch all data when new app is created
       fetchAll();
     };
-    
+
     const onUpdated = (event: AppEvent) => {
       if (event.type === 'app-updated') {
         const updatedEvent = event as AppUpdatedEvent;
         if (updatedEvent.data) {
-          setState(prev => {
+          setState((prev) => {
             // Update all apps
-            const updatedAllApps = prev.allApps.map(app => 
-              app.id === updatedEvent.appId 
-                ? { ...app, ...updatedEvent.data, updatedAt: new Date() }
-                : app
+            const updatedAllApps = prev.allApps.map((app) =>
+              app.id === updatedEvent.appId ? { ...app, ...updatedEvent.data, updatedAt: new Date() } : app,
             );
-            
+
             // Update favorite apps if present
-            const updatedFavoriteApps = prev.favoriteApps.map(app =>
-              app.id === updatedEvent.appId
-                ? { ...app, ...updatedEvent.data, updatedAt: new Date() }
-                : app
+            const updatedFavoriteApps = prev.favoriteApps.map((app) =>
+              app.id === updatedEvent.appId ? { ...app, ...updatedEvent.data, updatedAt: new Date() } : app,
             );
-            
+
             // Recompute recent apps with updated data
             const { recentApps, moreRecentAvailable } = computeRecentApps(updatedAllApps);
-            
+
             return {
               ...prev,
               allApps: updatedAllApps,
@@ -255,18 +254,17 @@ export function AppsDataProvider({ children }: AppsDataProviderProps) {
     };
   }, [fetchAll, computeRecentApps]);
 
-  const contextValue = useMemo<AppsDataContextValue>(() => ({
-    ...state,
-    refetchAllApps: fetchAllApps,
-    refetchFavoriteApps: fetchFavoriteApps,
-    refetchAll: fetchAll,
-  }), [state, fetchAllApps, fetchFavoriteApps, fetchAll]);
-
-  return (
-    <AppsDataContext.Provider value={contextValue}>
-      {children}
-    </AppsDataContext.Provider>
+  const contextValue = useMemo<AppsDataContextValue>(
+    () => ({
+      ...state,
+      refetchAllApps: fetchAllApps,
+      refetchFavoriteApps: fetchFavoriteApps,
+      refetchAll: fetchAll,
+    }),
+    [state, fetchAllApps, fetchFavoriteApps, fetchAll],
   );
+
+  return <AppsDataContext.Provider value={contextValue}>{children}</AppsDataContext.Provider>;
 }
 
 export function useAppsData() {

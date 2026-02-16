@@ -24,12 +24,12 @@ export function ConfirmDeleteDialog({
   open,
   onOpenChange,
   onConfirm,
-  title = "Delete App",
+  title = 'Delete App',
   description,
   isLoading = false,
-  appTitle
+  appTitle,
 }: ConfirmDeleteDialogProps) {
-  const defaultDescription = appTitle 
+  const defaultDescription = appTitle
     ? `Are you sure you want to delete "${appTitle}"? This action cannot be undone and all associated data will be permanently removed.`
     : 'Are you sure you want to delete this app? This action cannot be undone and all associated data will be permanently removed.';
 
@@ -57,9 +57,7 @@ export function ConfirmDeleteDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={isLoading}>
-            Cancel
-          </AlertDialogCancel>
+          <AlertDialogCancel disabled={isLoading}>Cancel</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleConfirm}
             disabled={isLoading}

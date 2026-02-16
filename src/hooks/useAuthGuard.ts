@@ -28,24 +28,27 @@ export function useAuthGuard(): AuthGuardReturn {
   const { isAuthenticated, user } = useAuth();
   const { showAuthModal } = useAuthModal();
 
-  const requireAuth = useCallback((options: AuthGuardOptions = {}) => {
-    // If already authenticated, check if anonymous users are allowed
-    if (isAuthenticated) {
-      if (options.requireFullAuth && user?.isAnonymous) {
-        showAuthModal(options.actionContext, options.onSuccess, options.intendedUrl);
-        return false;
+  const requireAuth = useCallback(
+    (options: AuthGuardOptions = {}) => {
+      // If already authenticated, check if anonymous users are allowed
+      if (isAuthenticated) {
+        if (options.requireFullAuth && user?.isAnonymous) {
+          showAuthModal(options.actionContext, options.onSuccess, options.intendedUrl);
+          return false;
+        }
+        // User is authenticated and meets requirements, execute success callback immediately
+        if (options.onSuccess) {
+          options.onSuccess();
+        }
+        return true;
       }
-      // User is authenticated and meets requirements, execute success callback immediately
-      if (options.onSuccess) {
-        options.onSuccess();
-      }
-      return true;
-    }
 
-    // Show login modal with context, pending action, and intended URL
-    showAuthModal(options.actionContext, options.onSuccess, options.intendedUrl);
-    return false;
-  }, [isAuthenticated, user?.isAnonymous, showAuthModal]);
+      // Show login modal with context, pending action, and intended URL
+      showAuthModal(options.actionContext, options.onSuccess, options.intendedUrl);
+      return false;
+    },
+    [isAuthenticated, user?.isAnonymous, showAuthModal],
+  );
 
   return {
     isAuthenticated,

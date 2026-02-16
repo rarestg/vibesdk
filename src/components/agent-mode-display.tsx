@@ -6,12 +6,11 @@ interface AgentModeDisplayProps {
   className?: string;
 }
 
-export function AgentModeDisplay({ 
-  mode, 
-  className = '' 
-}: AgentModeDisplayProps) {
+export function AgentModeDisplay({ mode, className = '' }: AgentModeDisplayProps) {
   return (
-    <div className={`flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 dark:bg-slate-800/50 rounded-md border border-slate-200 dark:border-slate-700 ${className}`}>
+    <div
+      className={`flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 dark:bg-slate-800/50 rounded-md border border-slate-200 dark:border-slate-700 ${className}`}
+    >
       {mode === 'smart' ? (
         <>
           <Zap className="size-2.5 text-violet-500" />

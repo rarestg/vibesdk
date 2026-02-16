@@ -26,28 +26,20 @@ export interface ScreenshotResult {
  * Automatically handles hiding specified elements during capture
  */
 export async function captureScreenshot(options: ScreenshotOptions = {}): Promise<ScreenshotResult> {
-  const {
-    quality = 0.8,
-    format = 'jpeg',
-    excludeElements = [],
-    scale = 1,
-    width,
-    height,
-    element
-  } = options;
+  const { quality = 0.8, format = 'jpeg', excludeElements = [], scale = 1, width, height, element } = options;
 
   // Store original styles of elements to hide
   const elementsToHide: Array<{ element: HTMLElement; originalStyle: string }> = [];
-  
+
   try {
     // Hide specified elements
-    excludeElements.forEach(selector => {
+    excludeElements.forEach((selector) => {
       const elements = document.querySelectorAll(selector);
-      elements.forEach(el => {
+      elements.forEach((el) => {
         const htmlEl = el as HTMLElement;
         elementsToHide.push({
           element: htmlEl,
-          originalStyle: htmlEl.style.display
+          originalStyle: htmlEl.style.display,
         });
         htmlEl.style.display = 'none';
       });
@@ -66,17 +58,21 @@ export async function captureScreenshot(options: ScreenshotOptions = {}): Promis
       ignoreElements: (element) => {
         // Additional element filtering if needed
         return element.classList.contains('screenshot-exclude');
-      }
+      },
     });
 
     // Convert to desired format
     const dataUrl = canvas.toDataURL(`image/${format}`, quality);
-    
+
     // Convert to blob for easier handling
     const blob = await new Promise<Blob>((resolve) => {
-      canvas.toBlob((blob) => {
-        resolve(blob!);
-      }, `image/${format}`, quality);
+      canvas.toBlob(
+        (blob) => {
+          resolve(blob!);
+        },
+        `image/${format}`,
+        quality,
+      );
     });
 
     return {
@@ -87,10 +83,10 @@ export async function captureScreenshot(options: ScreenshotOptions = {}): Promis
         url: window.location.href,
         viewport: {
           width: window.innerWidth,
-          height: window.innerHeight
+          height: window.innerHeight,
         },
-        userAgent: navigator.userAgent
-      }
+        userAgent: navigator.userAgent,
+      },
     };
   } finally {
     // Restore original styles
@@ -114,9 +110,9 @@ export async function captureDebugScreenshot(): Promise<ScreenshotResult> {
       '.debug-panel',
       '.modal-overlay',
       '.toast-container',
-      '.notification'
+      '.notification',
     ],
-    scale: 1
+    scale: 1,
   });
 }
 
@@ -128,12 +124,8 @@ export async function captureDeploymentScreenshot(): Promise<ScreenshotResult> {
   return captureScreenshot({
     quality: 0.9,
     format: 'png',
-    excludeElements: [
-      '[data-debug-panel]',
-      '[data-overlay]',
-      '.debug-panel'
-    ],
-    scale: 1
+    excludeElements: ['[data-debug-panel]', '[data-overlay]', '.debug-panel'],
+    scale: 1,
   });
 }
 
@@ -179,7 +171,7 @@ export class AutoScreenshotSystem {
     observer.observe(document.body, {
       childList: true,
       subtree: true,
-      attributes: false
+      attributes: false,
     });
   }
 
@@ -189,25 +181,22 @@ export class AutoScreenshotSystem {
         quality: 0.6,
         format: 'jpeg',
         scale: 0.5,
-        excludeElements: [
-          '[data-debug-panel]',
-          '[data-overlay]'
-        ]
+        excludeElements: ['[data-debug-panel]', '[data-overlay]'],
       });
 
       this.lastScreenshot = screenshot;
       this.screenshotHistory.push(screenshot);
-      
+
       // Keep only recent screenshots
       if (this.screenshotHistory.length > this.maxHistory) {
         this.screenshotHistory.shift();
       }
 
       this.onScreenshot?.(screenshot);
-      
+
       console.log(`Auto screenshot captured: ${trigger}`, {
         timestamp: screenshot.metadata.timestamp,
-        url: screenshot.metadata.url
+        url: screenshot.metadata.url,
       });
     } catch (error) {
       console.error('Auto screenshot failed:', error);

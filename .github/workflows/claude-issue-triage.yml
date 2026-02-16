@@ -77,4 +77,3 @@ jobs:
             --allowed-tools "Bash(gh label:*),Bash(gh issue:*)"
             --max-turns 12
             --model claude-opus-4-5-20251101
-

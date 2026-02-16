@@ -64,9 +64,5 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     applyTheme(newTheme);
   };
 
-  return (
-    <ThemeContext.Provider value={{ theme, setTheme: handleSetTheme }}>
-      {children}
-    </ThemeContext.Provider>
-  );
+  return <ThemeContext.Provider value={{ theme, setTheme: handleSetTheme }}>{children}</ThemeContext.Provider>;
 }

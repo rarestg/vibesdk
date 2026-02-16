@@ -8,11 +8,11 @@ export const StreamTypeSchema = z.enum(['stdout', 'stderr']);
 export type StreamType = z.infer<typeof StreamTypeSchema>;
 
 export const LogLevelSchema = z.enum([
-  'debug',    // Detailed diagnostic information
-  'info',     // General informational messages
-  'warn',     // Warning messages (non-error issues)
-  'error',    // Error messages (already handled by error system)
-  'output'    // Raw process output (stdout/stderr)
+  'debug', // Detailed diagnostic information
+  'info', // General informational messages
+  'warn', // Warning messages (non-error issues)
+  'error', // Error messages (already handled by error system)
+  'output', // Raw process output (stdout/stderr)
 ]);
 export type LogLevel = z.infer<typeof LogLevelSchema>;
 
@@ -21,10 +21,10 @@ export type LogLevel = z.infer<typeof LogLevelSchema>;
 // ==========================================
 
 export const SimpleErrorSchema = z.object({
-  timestamp: z.string(),     // ISO timestamp
-  level: z.number(),          // Pino log level (50=error, 60=fatal)
-  message: z.string(),        // The 'msg' field from JSON log
-  rawOutput: z.string()       // The complete raw JSON log line
+  timestamp: z.string(), // ISO timestamp
+  level: z.number(), // Pino log level (50=error, 60=fatal)
+  message: z.string(), // The 'msg' field from JSON log
+  rawOutput: z.string(), // The complete raw JSON log line
 });
 export type SimpleError = z.infer<typeof SimpleErrorSchema>;
 
@@ -50,7 +50,7 @@ export const StoredErrorSchema = SimpleErrorSchema.extend({
   processId: z.string(),
   errorHash: z.string(),
   occurrenceCount: z.number(),
-  createdAt: z.string()
+  createdAt: z.string(),
 });
 export type StoredError = z.infer<typeof StoredErrorSchema>;
 
@@ -60,7 +60,7 @@ const StoredEntityBaseSchema = z.object({
   instanceId: z.string(),
   processId: z.string(),
   timestamp: z.string(),
-  createdAt: z.string()
+  createdAt: z.string(),
 });
 
 // StoredLog extends base with log-specific fields
@@ -70,7 +70,7 @@ export const StoredLogSchema = StoredEntityBaseSchema.extend({
   stream: StreamTypeSchema,
   source: z.string().optional(),
   metadata: z.string().nullable(),
-  sequence: z.number()
+  sequence: z.number(),
 });
 export type StoredLog = z.infer<typeof StoredLogSchema>;
 
@@ -78,13 +78,7 @@ export type StoredLog = z.infer<typeof StoredLogSchema>;
 // PROCESS MONITORING TYPES
 // ==========================================
 
-export const ProcessStateSchema = z.enum([
-  'starting',
-  'running',
-  'stopping',
-  'stopped',
-  'crashed'
-]);
+export const ProcessStateSchema = z.enum(['starting', 'running', 'stopping', 'stopped', 'crashed']);
 export type ProcessState = z.infer<typeof ProcessStateSchema>;
 
 export interface ProcessInfo {
@@ -120,7 +114,7 @@ export interface MonitoringOptions {
 
 // Base storage options shared by error and log stores
 interface BaseStoreOptions {
-  readonly vacuumInterval?: number;  // Hours between cleanup runs
+  readonly vacuumInterval?: number; // Hours between cleanup runs
 }
 
 export interface ErrorStoreOptions extends BaseStoreOptions {
@@ -193,7 +187,7 @@ export interface LogRetrievalResponse {
 // MONITORING EVENTS
 // ==========================================
 
-export type MonitoringEvent = 
+export type MonitoringEvent =
   | {
       type: 'process_started';
       processId: string;
@@ -285,7 +279,7 @@ export interface ProcessRunnerConfig {
 // UTILITY TYPES
 // ==========================================
 
-export type Result<T, E = Error> = 
+export type Result<T, E = Error> =
   | { readonly success: true; readonly data: T }
   | { readonly success: false; readonly error: E };
 
@@ -294,27 +288,28 @@ export type Result<T, E = Error> =
 // ==========================================
 
 // Note: expectedPort is optional so we use Omit to exclude it from Required
-export const DEFAULT_MONITORING_OPTIONS: Omit<Required<MonitoringOptions>, 'expectedPort'> & { expectedPort?: number } = {
-  autoRestart: true,
-  maxRestarts: 3,
-  restartDelay: 1000,
-  errorBufferSize: 100,
-  healthCheckInterval: 30000,
-  env: {},
-  killTimeout: 10000,
-  expectedPort: undefined
-} as const;
+export const DEFAULT_MONITORING_OPTIONS: Omit<Required<MonitoringOptions>, 'expectedPort'> & { expectedPort?: number } =
+  {
+    autoRestart: true,
+    maxRestarts: 3,
+    restartDelay: 1000,
+    errorBufferSize: 100,
+    healthCheckInterval: 30000,
+    env: {},
+    killTimeout: 10000,
+    expectedPort: undefined,
+  } as const;
 
 export const DEFAULT_STORAGE_OPTIONS: ErrorStoreOptions = {
   maxErrors: 1000,
   retentionDays: 7,
-  vacuumInterval: 24
+  vacuumInterval: 24,
 } as const;
 
 export const DEFAULT_LOG_STORE_OPTIONS: LogStoreOptions = {
   maxLogs: 10000,
   retentionHours: 168, // 7 days
-  bufferSize: 1000
+  bufferSize: 1000,
 } as const;
 
 // Configurable paths - use environment variables or default to ./data directory

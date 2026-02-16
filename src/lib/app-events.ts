@@ -3,7 +3,7 @@
  * Allows different parts of the app to communicate about app state changes
  */
 
-import { AppWithFavoriteStatus } from "@/api-types";
+import { AppWithFavoriteStatus } from '@/api-types';
 
 // Define specific event data types
 export interface AppDeletedEvent {
@@ -25,7 +25,7 @@ export interface AppCreatedEvent {
 export interface AppUpdatedEvent {
   type: 'app-updated';
   appId: string;
-  data?: AppWithFavoriteStatus
+  data?: AppWithFavoriteStatus;
 }
 
 export type AppEvent = AppDeletedEvent | AppCreatedEvent | AppUpdatedEvent;
@@ -50,7 +50,7 @@ class AppEventEmitter {
   emit(event: AppEvent) {
     const listeners = this.listeners.get(event.type);
     if (listeners) {
-      listeners.forEach(listener => {
+      listeners.forEach((listener) => {
         try {
           listener(event);
         } catch (error) {

@@ -373,7 +373,7 @@
           "response": []
         },
         {
-          "name": "🌐 OAuth Helper - Get GitHub URL", 
+          "name": "🌐 OAuth Helper - Get GitHub URL",
           "event": [
             {
               "listen": "test",

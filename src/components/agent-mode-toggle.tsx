@@ -19,9 +19,9 @@ export function AgentModeToggle({ value, onChange, disabled = false, className =
         <Settings className="size-3.5 text-slate-600 dark:text-slate-400" />
         <span className="text-xs font-medium text-slate-700 dark:text-slate-300">Mode:</span>
       </div>
-      
+
       <div className="relative">
-        <div 
+        <div
           className="flex bg-slate-100 dark:bg-slate-800/50 rounded-lg p-0.5 border border-slate-200 dark:border-slate-700"
           onMouseEnter={() => setShowTooltip(true)}
           onMouseLeave={() => setShowTooltip(false)}
@@ -36,11 +36,11 @@ export function AgentModeToggle({ value, onChange, disabled = false, className =
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
             } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
           >
-            <div className={`size-1.5 rounded-full ${
-              value === 'deterministic' 
-                ? 'bg-emerald-500' 
-                : 'bg-slate-400 dark:bg-slate-500'
-            }`} />
+            <div
+              className={`size-1.5 rounded-full ${
+                value === 'deterministic' ? 'bg-emerald-500' : 'bg-slate-400 dark:bg-slate-500'
+              }`}
+            />
             Reliable
           </button>
           <button
@@ -53,15 +53,13 @@ export function AgentModeToggle({ value, onChange, disabled = false, className =
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
             } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
           >
-            <Zap className={`size-2.5 ${
-              value === 'smart' 
-                ? 'text-violet-500' 
-                : 'text-slate-400 dark:text-slate-500'
-            }`} />
+            <Zap
+              className={`size-2.5 ${value === 'smart' ? 'text-violet-500' : 'text-slate-400 dark:text-slate-500'}`}
+            />
             Smart
           </button>
         </div>
-        
+
         {/* Tooltip */}
         {showTooltip && (
           <div className="absolute -top-2 left-1/2 transform -translate-x-1/2 -translate-y-full pointer-events-none transition-opacity duration-200 z-50">

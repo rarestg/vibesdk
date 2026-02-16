@@ -27,7 +27,7 @@ export function extractUserAnalyticsProps(analytics: UserAnalyticsResponseData |
       tokensIn: 0,
       tokensOut: 0,
       totalRequests: 0,
-      lastUpdated: undefined
+      lastUpdated: undefined,
     };
   }
 
@@ -36,7 +36,7 @@ export function extractUserAnalyticsProps(analytics: UserAnalyticsResponseData |
     tokensIn: analytics.tokensIn,
     tokensOut: analytics.tokensOut,
     totalRequests: analytics.totalRequests,
-    lastUpdated: analytics.lastRequestAt || undefined
+    lastUpdated: analytics.lastRequestAt || undefined,
   };
 }
 
@@ -51,7 +51,7 @@ export function extractAgentAnalyticsProps(analytics: AgentAnalyticsResponseData
       tokensIn: 0,
       tokensOut: 0,
       totalRequests: 0,
-      lastUpdated: undefined
+      lastUpdated: undefined,
     };
   }
 
@@ -60,7 +60,7 @@ export function extractAgentAnalyticsProps(analytics: AgentAnalyticsResponseData
     tokensIn: analytics.tokensIn,
     tokensOut: analytics.tokensOut,
     totalRequests: analytics.totalRequests,
-    lastUpdated: analytics.lastRequestAt || undefined
+    lastUpdated: analytics.lastRequestAt || undefined,
   };
 }
 

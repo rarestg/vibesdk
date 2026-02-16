@@ -36,9 +36,9 @@ const containerVariants = {
   visible: {
     opacity: 1,
     transition: {
-      staggerChildren: 0.05 // Reduced from 0.1 for faster animation
-    }
-  }
+      staggerChildren: 0.05, // Reduced from 0.1 for faster animation
+    },
+  },
 };
 
 const getEmptyStateDefaults = (sortBy: AppSortOption, totalCount: number) => {
@@ -46,7 +46,7 @@ const getEmptyStateDefaults = (sortBy: AppSortOption, totalCount: number) => {
     // No apps at all
     return {
       title: 'No apps yet',
-      description: 'Start building your first app with AI assistance.'
+      description: 'Start building your first app with AI assistance.',
     };
   }
 
@@ -55,23 +55,23 @@ const getEmptyStateDefaults = (sortBy: AppSortOption, totalCount: number) => {
     case 'popular':
       return {
         title: 'No popular apps yet',
-        description: 'Apps will appear here once they start getting views, stars, or forks.'
+        description: 'Apps will appear here once they start getting views, stars, or forks.',
       };
     case 'starred':
       return {
         title: 'No bookmarked apps yet',
-        description: 'Apps you bookmark will appear here. Click the bookmark icon on any app to add it.'
+        description: 'Apps you bookmark will appear here. Click the bookmark icon on any app to add it.',
       };
     case 'trending':
       return {
         title: 'No trending apps yet',
-        description: 'Apps will appear here based on recent activity and engagement.'
+        description: 'Apps will appear here based on recent activity and engagement.',
       };
     case 'recent':
     default:
       return {
         title: 'No apps match your filters',
-        description: 'Try adjusting your search or filters to find what you\'re looking for.'
+        description: "Try adjusting your search or filters to find what you're looking for.",
       };
   }
 };
@@ -93,14 +93,14 @@ export const AppListContainer: React.FC<AppListContainerProps> = ({
   showActions = false,
   infiniteScroll = true,
   emptyState,
-  className = ""
+  className = '',
 }) => {
   const defaultEmptyState = getEmptyStateDefaults(sortBy, totalCount);
-  
+
   const { triggerRef } = useInfiniteScroll({
     threshold: 200,
     enabled: infiniteScroll && hasMore && !loadingMore,
-    onLoadMore: onLoadMore
+    onLoadMore: onLoadMore,
   });
 
   if (loading) {
@@ -132,16 +132,12 @@ export const AppListContainer: React.FC<AppListContainerProps> = ({
 
   if (apps.length === 0) {
     const emptyStateContent = emptyState || defaultEmptyState;
-    
+
     return (
       <div className="text-center py-20">
         <Code2 className="h-16 w-16 mx-auto mb-4 text-text-tertiary" />
-        <h3 className="text-xl font-semibold mb-2 text-text-secondary">
-          {emptyStateContent.title}
-        </h3>
-        <p className="text-text-tertiary mb-6">
-          {emptyStateContent.description}
-        </p>
+        <h3 className="text-xl font-semibold mb-2 text-text-secondary">{emptyStateContent.title}</h3>
+        <p className="text-text-tertiary mb-6">{emptyStateContent.description}</p>
         {'action' in emptyStateContent && emptyStateContent.action}
       </div>
     );
@@ -156,9 +152,9 @@ export const AppListContainer: React.FC<AppListContainerProps> = ({
         className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
       >
         <AnimatePresence mode="popLayout">
-          {apps.map(app => (
-            <AppCard 
-              key={app.id} 
+          {apps.map((app) => (
+            <AppCard
+              key={app.id}
               app={app}
               onClick={onAppClick}
               onToggleFavorite={onToggleFavorite}
@@ -171,13 +167,9 @@ export const AppListContainer: React.FC<AppListContainerProps> = ({
       </motion.div>
 
       {infiniteScroll && hasMore && (
-        <div 
-          ref={triggerRef} 
-          className="relative mt-8"
-          style={{ height: loadingMore ? 'auto' : '80px' }}
-        >
+        <div ref={triggerRef} className="relative mt-8" style={{ height: loadingMore ? 'auto' : '80px' }}>
           {loadingMore && (
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.3 }}
@@ -190,7 +182,7 @@ export const AppListContainer: React.FC<AppListContainerProps> = ({
                   <span className="text-sm text-text-tertiary">Loading more amazing apps...</span>
                 </div>
               </div>
-              
+
               {/* Optional: Skeleton placeholders for smoother experience */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {[...Array(4)].map((_, i) => (
@@ -219,21 +211,14 @@ export const AppListContainer: React.FC<AppListContainerProps> = ({
 
       {!infiniteScroll && hasMore && (
         <div className="flex justify-center mt-8">
-          <Button
-            onClick={onLoadMore}
-            disabled={loadingMore}
-            variant="outline"
-            className="gap-2"
-          >
+          <Button onClick={onLoadMore} disabled={loadingMore} variant="outline" className="gap-2">
             {loadingMore ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Loading more...
               </>
             ) : (
-              <>
-                Load more apps
-              </>
+              <>Load more apps</>
             )}
           </Button>
         </div>

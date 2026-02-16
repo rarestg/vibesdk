@@ -27,7 +27,7 @@ const getAgentIcon = (agentKey: string) => {
 // Helper function to format parameter values for display
 const formatParameterValue = (value: unknown, type: string): string | null => {
   if (value === null || value === undefined) return null;
-  
+
   switch (type) {
     case 'temperature':
       return `T: ${value}`;
@@ -47,7 +47,7 @@ export function ConfigCard({
   onConfigure,
   onTest,
   onReset,
-  isTesting
+  isTesting,
 }: ConfigCardProps) {
   const isCustomized = userConfig?.isUserOverride || false;
   const currentModel = userConfig?.name || defaultConfig?.name;
@@ -61,7 +61,9 @@ export function ConfigCard({
   const reasoningEffort = userConfig?.reasoning_effort ?? defaultConfig?.reasoning_effort;
 
   return (
-    <Card className={`h-full min-h-[280px] min-w-[280px] flex flex-col overflow-hidden transition-all dark:!bg-bg-3 !bg-bg-3 hover:shadow-md !border-bg-1/40`}>
+    <Card
+      className={`h-full min-h-[280px] min-w-[280px] flex flex-col overflow-hidden transition-all dark:!bg-bg-3 !bg-bg-3 hover:shadow-md !border-bg-1/40`}
+    >
       <CardHeader className="pb- flex-shrink-0">
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-start gap-2 min-w-0 flex-1 overflow-hidden">
@@ -72,23 +74,26 @@ export function ConfigCard({
               <h5 className="font-medium text-md leading-tight mb-1 break-words" title={agent.name}>
                 {agent.name}
               </h5>
-              <p className="text-xs text-text-tertiary line-clamp-3 leading-tight overflow-hidden break-words" title={agent.description}>
+              <p
+                className="text-xs text-text-tertiary line-clamp-3 leading-tight overflow-hidden break-words"
+                title={agent.description}
+              >
                 {agent.description}
               </p>
             </div>
           </div>
-          
+
           <div className="shrink-0">
-            <Badge 
-              variant={isCustomized ? "default" : "outline"} 
+            <Badge
+              variant={isCustomized ? 'default' : 'outline'}
               className="text-xs px-1.5 py-0.5 whitespace-nowrap dark:!bg-bg-1"
             >
-              {isCustomized ? "Custom" : "Default"}
+              {isCustomized ? 'Custom' : 'Default'}
             </Badge>
           </div>
         </div>
       </CardHeader>
-      
+
       <CardContent className="pt-0 flex-1 flex flex-col justify-between overflow-hidden">
         <div className="space-y-3 overflow-hidden">
           {/* Current Model */}
@@ -97,14 +102,14 @@ export function ConfigCard({
               <span className="text-sm font-medium flex-1 min-w-0 break-words leading-tight" title={modelDisplayName}>
                 {modelDisplayName}
               </span>
-              <Badge 
-                variant="secondary" 
+              <Badge
+                variant="secondary"
                 className={`text-xs shrink-0 px-1.5 py-0.5 mt-0.5 dark:contrast-50 ${providerInfo.color}`}
               >
                 {providerInfo.name}
               </Badge>
             </div>
-            
+
             {/* Parameter Summary - Contained within card bounds */}
             <div className="flex flex-wrap gap-1 overflow-hidden">
               {temperature !== null && temperature !== undefined ? (
@@ -121,7 +126,7 @@ export function ConfigCard({
                   </Tooltip>
                 </TooltipProvider>
               ) : null}
-              
+
               {maxTokens ? (
                 <TooltipProvider>
                   <Tooltip>
@@ -136,7 +141,7 @@ export function ConfigCard({
                   </Tooltip>
                 </TooltipProvider>
               ) : null}
-              
+
               {reasoningEffort ? (
                 <TooltipProvider>
                   <Tooltip>
@@ -154,7 +159,7 @@ export function ConfigCard({
             </div>
           </div>
         </div>
-        
+
         {/* Action Buttons - Fixed at bottom with proper containment */}
         <div className="flex gap-2 mt-3 shrink-0">
           <Button
@@ -166,7 +171,7 @@ export function ConfigCard({
             <Settings className="h-3 w-3 mr-1" />
             <span className="truncate">Configure</span>
           </Button>
-          
+
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -177,11 +182,7 @@ export function ConfigCard({
                   disabled={isTesting}
                   className="h-8 w-8 p-0 shrink-0"
                 >
-                  {isTesting ? (
-                    <Settings className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <Play className="h-3 w-3" />
-                  )}
+                  {isTesting ? <Settings className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
@@ -189,7 +190,7 @@ export function ConfigCard({
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          
+
           {isCustomized && (
             <TooltipProvider>
               <Tooltip>

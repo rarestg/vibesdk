@@ -20,64 +20,64 @@ import { UserModelConfig } from '../../../database/schema';
  * Response data for getModelConfigs
  */
 export interface ModelConfigsData {
-    configs: Record<AgentActionKey, UserModelConfigWithMetadata>;
-    defaults: Record<AgentActionKey, ModelConfig>;
-    message: string;
+  configs: Record<AgentActionKey, UserModelConfigWithMetadata>;
+  defaults: Record<AgentActionKey, ModelConfig>;
+  message: string;
 }
 
 /**
  * Response data for getModelConfig
  */
 export interface ModelConfigData {
-    config: UserModelConfigWithMetadata;
-    defaultConfig: ModelConfig;
-    message: string;
+  config: UserModelConfigWithMetadata;
+  defaultConfig: ModelConfig;
+  message: string;
 }
 
 /**
  * Response data for updateModelConfig
  */
 export interface ModelConfigUpdateData {
-    config: UserModelConfig;
-    message: string;
+  config: UserModelConfig;
+  message: string;
 }
 
 /**
  * Response data for testModelConfig
  */
 export interface ModelConfigTestData {
-    testResult: ModelTestResult;
-    message: string;
+  testResult: ModelTestResult;
+  message: string;
 }
 
 /**
  * Response data for resetAllConfigs
  */
 export interface ModelConfigResetData {
-    resetCount: number;
-    message: string;
+  resetCount: number;
+  message: string;
 }
 
 /**
  * Response data for getDefaults
  */
 export interface ModelConfigDefaultsData {
-    defaults: Record<AgentActionKey, ModelConfig>;
-    message: string;
+  defaults: Record<AgentActionKey, ModelConfig>;
+  message: string;
 }
 
 /**
  * Response data for deleteModelConfig
  */
 export interface ModelConfigDeleteData {
-    message: string;
+  message: string;
 }
 
 /**
  * Response data for getByokProviders
  */
 export interface ByokProvidersData {
-    providers: UserProviderStatus[];
-    modelsByProvider: ModelsByProvider;
-    platformModels: AIModels[];
+  providers: UserProviderStatus[];
+  modelsByProvider: ModelsByProvider;
+  platformModels: AIModels[];
 }

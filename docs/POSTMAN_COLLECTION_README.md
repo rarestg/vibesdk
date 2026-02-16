@@ -7,7 +7,7 @@ A comprehensive Postman collection for the V1 Dev platform APIs with OAuth setup
 This collection includes **100+ API endpoints** organized into logical groups:
 
 - 🔐 **Authentication** - OAuth, email auth, session management (16 endpoints)
-- 🤖 **Agent & Code Generation** - AI-powered webapp creation (5 endpoints) 
+- 🤖 **Agent & Code Generation** - AI-powered webapp creation (5 endpoints)
 - 📱 **Apps Management** - CRUD operations, public feed, favorites (10 endpoints)
 - 👤 **User Management** - Profile, apps with pagination (2 endpoints)
 - 📊 **Analytics & Stats** - User stats, AI Gateway analytics (4 endpoints)
@@ -20,13 +20,12 @@ This collection includes **100+ API endpoints** organized into logical groups:
 
 ### 1. Import Collection & Environment
 
-1. **Import Collection**: 
+1. **Import Collection**:
    - Open Postman → Import → Upload `v1dev-api-collection.postman_collection.json`
 
-2. **Import Environment**: 
+2. **Import Environment**:
    - Import → Upload `v1dev-environment.postman_environment.json`
-   
-3. **Select Environment**: 
+3. **Select Environment**:
    - Choose "V1 Dev Environment" from the environment dropdown
 
 ### 2. Configure Base URL
@@ -43,7 +42,7 @@ Update the `baseUrl` environment variable:
 #### 🌐 Recommended Approach: OAuth Helper Requests
 
 1. **Use the OAuth Helper requests**:
-   - Run "🌐 OAuth Helper - Get Google URL" 
+   - Run "🌐 OAuth Helper - Get Google URL"
    - Check the **Console tab** in Postman for the OAuth URL
    - Copy the URL and open it in your browser
 
@@ -59,7 +58,8 @@ Update the `baseUrl` environment variable:
 #### Alternative: Manual URL Construction
 
 If helpers don't work, manually construct URLs:
-- **Google OAuth**: `{{baseUrl}}/api/auth/oauth/google`  
+
+- **Google OAuth**: `{{baseUrl}}/api/auth/oauth/google`
 - **GitHub OAuth**: `{{baseUrl}}/api/auth/oauth/github`
 - Open these URLs directly in your browser
 
@@ -80,6 +80,7 @@ The collection automatically handles CSRF tokens:
 ## 🔑 Authentication Methods
 
 ### 1. Email Authentication
+
 ```json
 POST /api/auth/register
 {
@@ -90,16 +91,18 @@ POST /api/auth/register
 
 POST /api/auth/login
 {
-  "email": "user@example.com", 
+  "email": "user@example.com",
   "password": "SecurePassword123!"
 }
 ```
 
 ### 2. OAuth Authentication
+
 - **Google OAuth**: `GET /api/auth/oauth/google`
 - **GitHub OAuth**: `GET /api/auth/oauth/github`
 
 ### 3. Session-Based Authentication
+
 - Uses secure HTTP-only cookies
 - Sessions are automatically maintained across requests
 - CSRF protection via `X-CSRF-Token` header
@@ -117,7 +120,7 @@ POST /api/agent
 {
   "query": "Create a React todo app with TypeScript and Tailwind CSS",
   "agentMode": "smart",
-  "language": "typescript", 
+  "language": "typescript",
   "frameworks": ["react", "tailwindcss"],
   "selectedTemplate": "react-typescript"
 }
@@ -141,7 +144,7 @@ GET /api/apps/{appId}
 # Star an app (requires auth)
 POST /api/apps/{appId}/star
 
-# Fork an app (requires auth) 
+# Fork an app (requires auth)
 POST /api/apps/{appId}/fork
 ```
 
@@ -183,7 +186,7 @@ POST /api/secrets
   "value": "sk-your-api-key-here"
 }
 
-# Create custom model provider  
+# Create custom model provider
 POST /api/user/providers
 {
   "name": "My Custom OpenAI Provider",
@@ -196,22 +199,23 @@ POST /api/user/providers
 ## 🔧 Advanced Features
 
 ### Environment Variables
+
 The collection uses these automatically managed variables:
 
-| Variable | Description | Auto-populated |
-|----------|-------------|----------------|
-| `csrf_token` | CSRF protection token | ✅ |
-| `user_id` | Current user ID | ✅ |
-| `session_id` | Current session ID | ✅ |
-| `agent_id` | Current agent/app ID | ✅ |
-| `app_id` | Current app ID | ✅ |
-| `provider_id` | Model provider ID | Manual |
-| `secret_id` | Secret ID | Manual |
+| Variable      | Description           | Auto-populated |
+| ------------- | --------------------- | -------------- |
+| `csrf_token`  | CSRF protection token | ✅             |
+| `user_id`     | Current user ID       | ✅             |
+| `session_id`  | Current session ID    | ✅             |
+| `agent_id`    | Current agent/app ID  | ✅             |
+| `app_id`      | Current app ID        | ✅             |
+| `provider_id` | Model provider ID     | Manual         |
+| `secret_id`   | Secret ID             | Manual         |
 
 ### Request Automation
 
 - **CSRF Tokens**: Automatically fetched and included
-- **Session Management**: Cookies handled transparently  
+- **Session Management**: Cookies handled transparently
 - **Variable Population**: IDs extracted from responses
 - **Error Handling**: Test scripts validate responses
 
@@ -229,6 +233,7 @@ For WebSocket endpoints like agent communication:
 ### Local Development
 
 1. **Start Wrangler Dev Server**:
+
    ```bash
    cd /path/to/v1dev
    npm run local  # Starts on http://localhost:8787
@@ -258,14 +263,14 @@ For WebSocket endpoints like agent communication:
 
 ### Common Parameters
 
-| Parameter | Description | Example |
-|-----------|-------------|---------|
-| `page` | Page number for pagination | `1` |
-| `limit` | Items per page | `20` |
-| `sort` | Sort field | `createdAt`, `stars` |
-| `order` | Sort order | `asc`, `desc` |
-| `period` | Time period filter | `today`, `week`, `month`, `all` |
-| `search` | Search query | `"todo app"` |
+| Parameter | Description                | Example                         |
+| --------- | -------------------------- | ------------------------------- |
+| `page`    | Page number for pagination | `1`                             |
+| `limit`   | Items per page             | `20`                            |
+| `sort`    | Sort field                 | `createdAt`, `stars`            |
+| `order`   | Sort order                 | `asc`, `desc`                   |
+| `period`  | Time period filter         | `today`, `week`, `month`, `all` |
+| `search`  | Search query               | `"todo app"`                    |
 
 ### Response Format
 
@@ -278,7 +283,7 @@ All API responses follow this structure:
   "message": "Optional message",
   "pagination": {  // For paginated responses
     "page": 1,
-    "limit": 20, 
+    "limit": 20,
     "total": 100,
     "totalPages": 5
   }

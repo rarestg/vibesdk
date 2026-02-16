@@ -2,17 +2,17 @@
 
 /**
  * Cloudflare Orange Build - Automated Undeployment Script
- * 
- * This script safely removes all Cloudflare resources associated with 
+ *
+ * This script safely removes all Cloudflare resources associated with
  * the Orange Build platform, including:
  * - Worker
- * - Containers 
+ * - Containers
  * - KV namespaces
  * - R2 buckets
  * - Container images
  * - D1 database (optional, with --force flag)
  * - Dispatch namespace (optional, with --force flag)
- * 
+ *
  * Usage:
  *   bun scripts/undeploy.ts          # Standard cleanup (preserves D1 + dispatch namespace)
  *   bun scripts/undeploy.ts all --force  # Complete cleanup (destroys everything)
@@ -62,7 +62,10 @@ interface WranglerConfig {
 }
 
 class UndeploymentError extends Error {
-  constructor(message: string, public cause?: Error) {
+  constructor(
+    message: string,
+    public cause?: Error,
+  ) {
     super(message);
     this.name = 'UndeploymentError';
   }
@@ -105,7 +108,7 @@ class CloudflareUndeploymentManager {
    */
   private parseWranglerConfig(): WranglerConfig {
     const wranglerPath = join(PROJECT_ROOT, 'wrangler.jsonc');
-    
+
     if (!existsSync(wranglerPath)) {
       throw new UndeploymentError('wrangler.jsonc file not found in project root');
     }
@@ -113,13 +116,13 @@ class CloudflareUndeploymentManager {
     try {
       const content = readFileSync(wranglerPath, 'utf-8');
       const config = parse(content) as WranglerConfig;
-      
+
       console.log(`📋 Parsed wrangler.jsonc - Project: ${config.name}`);
       return config;
     } catch (error) {
       throw new UndeploymentError(
         'Failed to parse wrangler.jsonc file',
-        error instanceof Error ? error : new Error(String(error))
+        error instanceof Error ? error : new Error(String(error)),
       );
     }
   }
@@ -138,10 +141,10 @@ class CloudflareUndeploymentManager {
       /^containers\s+list$/,
       /^containers\s+delete\s+[a-f0-9-]+$/,
       /^containers\s+images\s+list$/,
-      /^containers\s+images\s+delete\s+[a-zA-Z0-9_:.-]+$/
+      /^containers\s+images\s+delete\s+[a-zA-Z0-9_:.-]+$/,
     ];
 
-    const isAllowed = allowedCommands.some(pattern => pattern.test(command.trim()));
+    const isAllowed = allowedCommands.some((pattern) => pattern.test(command.trim()));
     if (!isAllowed) {
       throw new UndeploymentError(`Invalid or potentially unsafe wrangler command: ${command}`);
     }
@@ -153,17 +156,19 @@ class CloudflareUndeploymentManager {
   private execWranglerCommand(command: string, description: string): boolean {
     try {
       console.log(`🔄 ${description}...`);
-      
+
       // Validate command for security
       this.validateWranglerCommand(command);
-      
+
       // For delete commands, set environment variables for non-interactive mode
-      const env = command.includes('delete') ? {
-        ...process.env,
-        CI: 'true',
-        WRANGLER_NON_INTERACTIVE: 'true',
-        NODE_ENV: 'production'
-      } : process.env;
+      const env = command.includes('delete')
+        ? {
+            ...process.env,
+            CI: 'true',
+            WRANGLER_NON_INTERACTIVE: 'true',
+            NODE_ENV: 'production',
+          }
+        : process.env;
 
       // Use secure array-based execution - eliminates command injection vectors
       const args = command.trim().split(/\s+/);
@@ -171,9 +176,9 @@ class CloudflareUndeploymentManager {
         stdio: 'pipe',
         cwd: PROJECT_ROOT,
         encoding: 'utf8',
-        env: env
+        env: env,
       });
-      
+
       if (result.status !== 0) {
         throw new Error(result.stderr || result.stdout || 'Command failed');
       }
@@ -191,19 +196,21 @@ class CloudflareUndeploymentManager {
   private async execWranglerCommandAsync(command: string, description: string): Promise<boolean> {
     try {
       console.log(`🔄 ${description}...`);
-      
+
       return new Promise<boolean>((resolve) => {
         try {
           // Validate command for security
           this.validateWranglerCommand(command);
-          
+
           // For delete commands, set environment variables for non-interactive mode
-          const env = command.includes('delete') ? {
-            ...process.env,
-            CI: 'true',
-            WRANGLER_NON_INTERACTIVE: 'true',
-            NODE_ENV: 'production'
-          } : process.env;
+          const env = command.includes('delete')
+            ? {
+                ...process.env,
+                CI: 'true',
+                WRANGLER_NON_INTERACTIVE: 'true',
+                NODE_ENV: 'production',
+              }
+            : process.env;
 
           // Use secure array-based execution - eliminates command injection vectors
           const args = command.trim().split(/\s+/);
@@ -211,9 +218,9 @@ class CloudflareUndeploymentManager {
             stdio: 'pipe',
             cwd: PROJECT_ROOT,
             encoding: 'utf8',
-            env: env
+            env: env,
           });
-          
+
           if (result.status !== 0) {
             throw new Error(result.stderr || result.stdout || 'Command failed');
           }
@@ -235,11 +242,8 @@ class CloudflareUndeploymentManager {
    */
   private async deleteWorker(): Promise<void> {
     console.log('\n🗑️  Deleting Worker...');
-    
-    const success = this.execWranglerCommand(
-      `delete ${this.config.name}`,
-      `Deleting Worker: ${this.config.name}`
-    );
+
+    const success = this.execWranglerCommand(`delete ${this.config.name}`, `Deleting Worker: ${this.config.name}`);
 
     if (!success) {
       console.warn('   Worker may not exist or already deleted');
@@ -257,15 +261,15 @@ class CloudflareUndeploymentManager {
 
     console.log(`\n📦 Deleting ${this.config.kv_namespaces.length} KV namespaces in parallel...`);
 
-    const deletePromises = this.config.kv_namespaces.map(kvNamespace =>
+    const deletePromises = this.config.kv_namespaces.map((kvNamespace) =>
       this.execWranglerCommandAsync(
         `kv namespace delete --namespace-id=${kvNamespace.id}`,
-        `Deleting KV namespace: ${kvNamespace.binding} (ID: ${kvNamespace.id})`
-      )
+        `Deleting KV namespace: ${kvNamespace.binding} (ID: ${kvNamespace.id})`,
+      ),
     );
 
     const results = await Promise.allSettled(deletePromises);
-    const successCount = results.filter(result => result.status === 'fulfilled' && result.value).length;
+    const successCount = results.filter((result) => result.status === 'fulfilled' && result.value).length;
 
     console.log(`✅ Deleted ${successCount}/${this.config.kv_namespaces.length} KV namespaces`);
   }
@@ -281,15 +285,15 @@ class CloudflareUndeploymentManager {
 
     console.log(`\n🪣 Deleting ${this.config.r2_buckets.length} R2 buckets in parallel...`);
 
-    const deletePromises = this.config.r2_buckets.map(bucket =>
+    const deletePromises = this.config.r2_buckets.map((bucket) =>
       this.execWranglerCommandAsync(
         `r2 bucket delete ${bucket.bucket_name}`,
-        `Deleting R2 bucket: ${bucket.bucket_name}`
-      )
+        `Deleting R2 bucket: ${bucket.bucket_name}`,
+      ),
     );
 
     const results = await Promise.allSettled(deletePromises);
-    const successCount = results.filter(result => result.status === 'fulfilled' && result.value).length;
+    const successCount = results.filter((result) => result.status === 'fulfilled' && result.value).length;
 
     console.log(`✅ Deleted ${successCount}/${this.config.r2_buckets.length} R2 buckets`);
   }
@@ -310,15 +314,15 @@ class CloudflareUndeploymentManager {
 
     console.log(`\n🗄️  Deleting ${this.config.d1_databases.length} D1 databases in parallel...`);
 
-    const deletePromises = this.config.d1_databases.map(database =>
+    const deletePromises = this.config.d1_databases.map((database) =>
       this.execWranglerCommandAsync(
         `d1 delete ${database.database_name} --skip-confirmation`,
-        `Deleting D1 database: ${database.database_name}`
-      )
+        `Deleting D1 database: ${database.database_name}`,
+      ),
     );
 
     const results = await Promise.allSettled(deletePromises);
-    const successCount = results.filter(result => result.status === 'fulfilled' && result.value).length;
+    const successCount = results.filter((result) => result.status === 'fulfilled' && result.value).length;
 
     console.log(`✅ Deleted ${successCount}/${this.config.d1_databases.length} D1 databases`);
   }
@@ -339,15 +343,15 @@ class CloudflareUndeploymentManager {
 
     console.log(`\n🚀 Deleting ${this.config.dispatch_namespaces.length} dispatch namespaces in parallel...`);
 
-    const deletePromises = this.config.dispatch_namespaces.map(dispatchNs =>
+    const deletePromises = this.config.dispatch_namespaces.map((dispatchNs) =>
       this.execWranglerCommandAsync(
         `dispatch-namespace delete ${dispatchNs.namespace}`,
-        `Deleting dispatch namespace: ${dispatchNs.namespace}`
-      )
+        `Deleting dispatch namespace: ${dispatchNs.namespace}`,
+      ),
     );
 
     const results = await Promise.allSettled(deletePromises);
-    const successCount = results.filter(result => result.status === 'fulfilled' && result.value).length;
+    const successCount = results.filter((result) => result.status === 'fulfilled' && result.value).length;
 
     console.log(`✅ Deleted ${successCount}/${this.config.dispatch_namespaces.length} dispatch namespaces`);
   }
@@ -363,7 +367,7 @@ class CloudflareUndeploymentManager {
       const output = execSync('wrangler containers list', {
         stdio: 'pipe',
         cwd: PROJECT_ROOT,
-        encoding: 'utf-8'
+        encoding: 'utf-8',
       });
 
       // Parse JSON output from wrangler
@@ -371,7 +375,7 @@ class CloudflareUndeploymentManager {
       try {
         // Extract JSON part from the output (skip warnings)
         const lines = output.split('\n');
-        const jsonStart = lines.findIndex(line => line.trim().startsWith('['));
+        const jsonStart = lines.findIndex((line) => line.trim().startsWith('['));
         if (jsonStart !== -1) {
           const jsonOutput = lines.slice(jsonStart).join('\n');
           containers = JSON.parse(jsonOutput);
@@ -386,18 +390,18 @@ class CloudflareUndeploymentManager {
       const containerPatterns = [
         `${workerName}-`,
         `${workerName.replace('_', '-')}-`,
-        `${workerName.replace('-', '_')}-`
+        `${workerName.replace('-', '_')}-`,
       ];
 
       // Collect all container IDs that belong to our worker
-      const containersToDelete: { id: string, name: string }[] = [];
+      const containersToDelete: { id: string; name: string }[] = [];
 
       for (const container of containers) {
         if (!container.id || !container.name) continue;
 
         // Check if this container belongs to our worker
-        const isOurContainer = containerPatterns.some(pattern => 
-          container.name.toLowerCase().includes(pattern.toLowerCase())
+        const isOurContainer = containerPatterns.some((pattern) =>
+          container.name.toLowerCase().includes(pattern.toLowerCase()),
         );
 
         if (isOurContainer) {
@@ -413,18 +417,17 @@ class CloudflareUndeploymentManager {
       console.log(`🔄 Deleting ${containersToDelete.length} containers in parallel...`);
 
       // Delete all containers in parallel
-      const deletePromises = containersToDelete.map(container => 
+      const deletePromises = containersToDelete.map((container) =>
         this.execWranglerCommandAsync(
           `containers delete ${container.id}`,
-          `Deleting container: ${container.name} (${container.id})`
-        )
+          `Deleting container: ${container.name} (${container.id})`,
+        ),
       );
 
       const results = await Promise.allSettled(deletePromises);
-      const successCount = results.filter(result => result.status === 'fulfilled' && result.value).length;
+      const successCount = results.filter((result) => result.status === 'fulfilled' && result.value).length;
 
       console.log(`✅ Deleted ${successCount}/${containersToDelete.length} containers`);
-
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       if (errorMessage.includes('DELETE method not allowed for the oauth_token authentication scheme')) {
@@ -449,20 +452,16 @@ class CloudflareUndeploymentManager {
       const output = execSync('wrangler containers images list', {
         stdio: 'pipe',
         cwd: PROJECT_ROOT,
-        encoding: 'utf-8'
+        encoding: 'utf-8',
       });
 
       // Parse the output to find images related to our worker
       const lines = output.split('\n');
-      const imageLines = lines.slice(1).filter(line => line.trim()); // Skip header
+      const imageLines = lines.slice(1).filter((line) => line.trim()); // Skip header
 
       // Generate patterns to match our worker images
       const workerName = this.config.name;
-      const imagePatterns = [
-        `${workerName}-`,
-        `${workerName.replace('_', '-')}-`,
-        `${workerName.replace('-', '_')}-`
-      ];
+      const imagePatterns = [`${workerName}-`, `${workerName.replace('_', '-')}-`, `${workerName.replace('-', '_')}-`];
 
       // Collect all images that belong to our worker
       const imagesToDelete: string[] = [];
@@ -474,9 +473,7 @@ class CloudflareUndeploymentManager {
         const [repository, tag] = parts;
 
         // Check if this image belongs to our worker
-        const isOurImage = imagePatterns.some(pattern => 
-          repository.toLowerCase().includes(pattern.toLowerCase())
-        );
+        const isOurImage = imagePatterns.some((pattern) => repository.toLowerCase().includes(pattern.toLowerCase()));
 
         if (isOurImage) {
           imagesToDelete.push(`${repository}:${tag}`);
@@ -491,20 +488,18 @@ class CloudflareUndeploymentManager {
       console.log(`🔄 Deleting ${imagesToDelete.length} container images in parallel...`);
 
       // Delete all images in parallel
-      const deletePromises = imagesToDelete.map(imageRef => 
-        this.execWranglerCommandAsync(
-          `containers images delete ${imageRef}`,
-          `Deleting container image: ${imageRef}`
-        )
+      const deletePromises = imagesToDelete.map((imageRef) =>
+        this.execWranglerCommandAsync(`containers images delete ${imageRef}`, `Deleting container image: ${imageRef}`),
       );
 
       const results = await Promise.allSettled(deletePromises);
-      const successCount = results.filter(result => result.status === 'fulfilled' && result.value).length;
+      const successCount = results.filter((result) => result.status === 'fulfilled' && result.value).length;
 
       console.log(`✅ Deleted ${successCount}/${imagesToDelete.length} container images`);
-
     } catch (error) {
-      console.warn(`⚠️  Could not list/delete container images: ${error instanceof Error ? error.message : String(error)}`);
+      console.warn(
+        `⚠️  Could not list/delete container images: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
@@ -515,13 +510,13 @@ class CloudflareUndeploymentManager {
     console.log('\n' + '='.repeat(60));
     console.log('🎯 UNDEPLOYMENT SUMMARY');
     console.log('='.repeat(60));
-    
+
     const cleanedResources = [
       '✅ Containers deleted',
       '✅ Container images deleted',
       '✅ Worker deleted',
       '✅ KV namespaces deleted',
-      '✅ R2 buckets deleted'
+      '✅ R2 buckets deleted',
     ];
 
     if (this.allMode && this.forceMode) {
@@ -532,11 +527,11 @@ class CloudflareUndeploymentManager {
       cleanedResources.push('⚪ Dispatch namespace preserved');
     }
 
-    cleanedResources.forEach(resource => console.log(`   ${resource}`));
+    cleanedResources.forEach((resource) => console.log(`   ${resource}`));
 
     console.log('\n💡 To completely remove all resources, use:');
     console.log('   bun scripts/undeploy.ts all --force');
-    
+
     console.log('\n🧡 Orange Build cleanup completed!');
   }
 
@@ -545,7 +540,7 @@ class CloudflareUndeploymentManager {
    */
   public async undeploy(): Promise<void> {
     console.log('🧡 Cloudflare Orange Build - Automated Undeployment Starting...\n');
-    
+
     const startTime = Date.now();
 
     try {
@@ -560,22 +555,16 @@ class CloudflareUndeploymentManager {
 
       // Step 4: Delete supporting resources in parallel
       console.log('\n📋 Step 4: Deleting supporting resources in parallel...');
-      const supportingResourcePromises = [
-        this.deleteKVNamespaces(),
-        this.deleteR2Buckets()
-      ];
-      
+      const supportingResourcePromises = [this.deleteKVNamespaces(), this.deleteR2Buckets()];
+
       await Promise.all(supportingResourcePromises);
       console.log('✅ Supporting resources deletion completed!');
 
       // Step 5: Delete persistent resources in parallel (only with --force)
       if (this.allMode && this.forceMode) {
         console.log('\n📋 Step 5: Deleting persistent resources in parallel...');
-        const persistentResourcePromises = [
-          this.deleteD1Database(),
-          this.deleteDispatchNamespace()
-        ];
-        
+        const persistentResourcePromises = [this.deleteD1Database(), this.deleteDispatchNamespace()];
+
         await Promise.all(persistentResourcePromises);
         console.log('✅ Persistent resources deletion completed!');
       } else {
@@ -586,12 +575,11 @@ class CloudflareUndeploymentManager {
       // Final summary
       const duration = Math.round((Date.now() - startTime) / 1000);
       console.log(`\n⏱️  Undeployment completed in ${duration}s`);
-      
+
       this.showFinalSummary();
-      
     } catch (error) {
       console.error('\n❌ Undeployment failed:');
-      
+
       if (error instanceof UndeploymentError) {
         console.error(`   ${error.message}`);
         if (error.cause) {
@@ -600,13 +588,13 @@ class CloudflareUndeploymentManager {
       } else {
         console.error(`   ${error}`);
       }
-      
+
       console.error('\n🔍 Troubleshooting tips:');
       console.error('   - Ensure you have proper Cloudflare API permissions');
       console.error('   - Check that wrangler is authenticated');
       console.error('   - Verify resources exist before attempting deletion');
       console.error('   - Some resources may have already been deleted manually');
-      
+
       process.exit(1);
     }
   }

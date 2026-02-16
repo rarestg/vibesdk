@@ -19,45 +19,36 @@ export type {
   AppSortOption,
   SortOrder,
   AppQueryOptions,
-  PublicAppQueryOptions
+  PublicAppQueryOptions,
 } from 'worker/database/types';
 
 // App-related API Types
-export type { 
+export type {
   AppsListData,
-  PublicAppsData, 
+  PublicAppsData,
   SingleAppData,
   FavoriteToggleData,
   CreateAppData,
   UpdateAppVisibilityData,
   AppDeleteData,
-  AppWithUserAndStats
+  AppWithUserAndStats,
 } from 'worker/api/controllers/apps/types';
 
 export type {
   AppDetailsData,
   AppStarToggleData,
   GeneratedCodeFile,
-  GitCloneTokenData
+  GitCloneTokenData,
 } from 'worker/api/controllers/appView/types';
 
 // User-related API Types
-export type {
-  UserAppsData,
-  ProfileUpdateData,
-} from 'worker/api/controllers/user/types';
+export type { UserAppsData, ProfileUpdateData } from 'worker/api/controllers/user/types';
 
 // Stats API Types
-export type {
-  UserStatsData,
-  UserActivityData
-} from 'worker/api/controllers/stats/types';
+export type { UserStatsData, UserActivityData } from 'worker/api/controllers/stats/types';
 
 // Analytics API Types
-export type {
-  UserAnalyticsResponseData,
-  AgentAnalyticsResponseData,
-} from 'worker/api/controllers/analytics/types';
+export type { UserAnalyticsResponseData, AgentAnalyticsResponseData } from 'worker/api/controllers/analytics/types';
 
 export type { PlatformStatusData } from 'worker/api/controllers/status/types';
 
@@ -72,10 +63,7 @@ export type {
   PlatformCapabilitiesConfig,
 } from 'worker/agents/core/features/types';
 
-export {
-  DEFAULT_FEATURE_DEFINITIONS,
-  getBehaviorTypeForProject,
-} from 'worker/agents/core/features';
+export { DEFAULT_FEATURE_DEFINITIONS, getBehaviorTypeForProject } from 'worker/agents/core/features';
 
 // Model Config API Types
 export type {
@@ -88,7 +76,7 @@ export type {
   ModelConfigDeleteData,
   ByokProvidersData,
   UserProviderStatus,
-  ModelsByProvider
+  ModelsByProvider,
 } from 'worker/api/controllers/modelConfig/types';
 
 // Model Provider API Types
@@ -101,7 +89,7 @@ export type {
   ModelProviderTestData,
   CreateProviderRequest,
   UpdateProviderRequest,
-  TestProviderRequest
+  TestProviderRequest,
 } from 'worker/api/controllers/modelProviders/types';
 
 // Frontend model config update interface that matches backend schema
@@ -119,24 +107,20 @@ export type { SecretTemplatesData } from 'worker/api/controllers/secrets/types';
 
 // Vault API Types
 export type {
-	VaultConfig,
-	VaultConfigResponse,
-	VaultStatusResponse,
-	SetupVaultRequest,
-	KdfAlgorithm,
-	Argon2Params,
-	SecretMetadata,
+  VaultConfig,
+  VaultConfigResponse,
+  VaultStatusResponse,
+  SetupVaultRequest,
+  KdfAlgorithm,
+  Argon2Params,
+  SecretMetadata,
 } from 'worker/services/secrets/vault-types';
 
 // Agent/CodeGen API Types
-export type {
-  AgentConnectionData,
-} from 'worker/api/controllers/agent/types';
+export type { AgentConnectionData } from 'worker/api/controllers/agent/types';
 
 // Template Types
-export type {
-  TemplateDetails,
-} from 'worker/services/sandbox/sandboxTypes';
+export type { TemplateDetails } from 'worker/services/sandbox/sandboxTypes';
 
 // WebSocket Types
 export type {
@@ -145,23 +129,18 @@ export type {
   CodeFixEdits,
   ModelConfigsInfoMessage,
   AgentDisplayConfig,
-  ModelConfigsInfo
+  ModelConfigsInfo,
 } from 'worker/api/websocketTypes';
 
 // Database/Schema Types commonly used in frontend
-export type { 
-  App,
-  User,
-  UserModelConfig,
-  UserModelProvider
-} from 'worker/database/schema';
+export type { App, User, UserModelConfig, UserModelProvider } from 'worker/database/schema';
 
 export type {
   FavoriteToggleResult,
   UserStats,
   UserActivity,
   UserModelConfigWithMetadata,
-  ModelTestResult
+  ModelTestResult,
 } from 'worker/database/types';
 
 // Agent/Generator Types
@@ -173,35 +152,24 @@ export type {
   FileOutputType as GeneratedFile,
 } from 'worker/agents/schemas';
 
-export type {
-  AgentState,
-  PhasicState
-} from 'worker/agents/core/state';
+export type { AgentState, PhasicState } from 'worker/agents/core/state';
 
-export type {
-  BehaviorType,
-  ProjectType
-} from 'worker/agents/core/types';
+export type { BehaviorType, ProjectType } from 'worker/agents/core/types';
 
-export type {
-  ConversationMessage,
-} from 'worker/agents/inferutils/common';
+export type { ConversationMessage } from 'worker/agents/inferutils/common';
 
-export type { 
-  RuntimeError,
-  StaticAnalysisResponse 
-} from 'worker/services/sandbox/sandboxTypes';
+export type { RuntimeError, StaticAnalysisResponse } from 'worker/services/sandbox/sandboxTypes';
 
 // Config/Inference Types
-export type { 
+export type {
   AgentActionKey,
   AgentConfig,
   ModelConfig,
   ReasoningEffortType as ReasoningEffort,
-  ProviderOverrideType as ProviderOverride
+  ProviderOverrideType as ProviderOverride,
 } from 'worker/agents/inferutils/config.types';
 
-export type { RateLimitError } from "worker/services/rate-limit/errors";
+export type { RateLimitError } from 'worker/services/rate-limit/errors';
 export type { AgentPreviewResponse, CodeGenArgs } from 'worker/api/controllers/agent/types';
 export { MAX_AGENT_QUERY_LENGTH } from 'worker/api/controllers/agent/types';
 export type { RateLimitErrorResponse } from 'worker/api/responses';
@@ -213,13 +181,13 @@ export type ModelSelectionMode = 'platform' | 'byok' | 'custom';
 
 // Match chat FileType interface
 export interface FileType {
-	filePath: string;
-	fileContents: string;
-	explanation?: string;
-	isGenerating?: boolean;
-	needsFixing?: boolean;
-	hasErrors?: boolean;
-	language?: string;
+  filePath: string;
+  fileContents: string;
+  explanation?: string;
+  isGenerating?: boolean;
+  needsFixing?: boolean;
+  hasErrors?: boolean;
+  language?: string;
 }
 
 // Streaming response wrapper types for agent session creation
@@ -231,24 +199,16 @@ export interface StreamingResponse {
 export type AgentStreamingResponse = StreamingResponse;
 
 export {
-	type ImageAttachment, 
-	isSupportedImageType, 
-	MAX_IMAGE_SIZE_BYTES,
-	MAX_IMAGES_PER_MESSAGE,
-	SUPPORTED_IMAGE_MIME_TYPES
+  type ImageAttachment,
+  isSupportedImageType,
+  MAX_IMAGE_SIZE_BYTES,
+  MAX_IMAGES_PER_MESSAGE,
+  SUPPORTED_IMAGE_MIME_TYPES,
 } from 'worker/types/image-attachment';
 
 // Auth types imported from worker
-export type { 
-  AuthSession, 
-  ApiKeyInfo, 
-  AuthResult, 
-  AuthUser,
-  OAuthProvider 
-} from 'worker/types/auth-types';
-export type { 
-  SessionResponse 
-} from 'worker/utils/authUtils';
+export type { AuthSession, ApiKeyInfo, AuthResult, AuthUser, OAuthProvider } from 'worker/types/auth-types';
+export type { SessionResponse } from 'worker/utils/authUtils';
 
 // Auth API Response Types (using existing worker types)
 export type LoginResponseData = SessionResponse;
@@ -304,7 +264,4 @@ export interface ApiKeysData {
   }>;
 }
 
-export type {
-    GitHubExportOptions,
-    GitHubExportResult,
-} from 'worker/services/github/types';
+export type { GitHubExportOptions, GitHubExportResult } from 'worker/services/github/types';

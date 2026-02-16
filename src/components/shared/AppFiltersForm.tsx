@@ -30,16 +30,14 @@ interface AppFiltersFormProps {
   className?: string;
 }
 
-
 export const AppFiltersForm: React.FC<AppFiltersFormProps> = ({
   searchQuery,
   onSearchChange,
   onSearchSubmit,
   searchPlaceholder = 'Search apps...',
   showSearchButton = false,
-  className = ''
+  className = '',
 }) => {
-
   return (
     <div className={`max-w-4xl mb-8 ${className}`}>
       <form onSubmit={onSearchSubmit} className="flex gap-2 mb-4">
@@ -53,13 +51,8 @@ export const AppFiltersForm: React.FC<AppFiltersFormProps> = ({
             className="pl-10 bg-bg-4 w-90"
           />
         </div>
-        
 
-        {showSearchButton && (
-          <Button type="submit">
-            Search
-          </Button>
-        )}
+        {showSearchButton && <Button type="submit">Search</Button>}
       </form>
     </div>
   );

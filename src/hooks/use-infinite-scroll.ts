@@ -13,7 +13,7 @@ interface UseInfiniteScrollResult {
 export function useInfiniteScroll({
   threshold = 400,
   enabled = true,
-  onLoadMore
+  onLoadMore,
 }: UseInfiniteScrollOptions = {}): UseInfiniteScrollResult {
   const triggerRef = useRef<HTMLDivElement | null>(null);
   const isLoadingRef = useRef(false);
@@ -27,7 +27,7 @@ export function useInfiniteScroll({
         if (entry.isIntersecting && !isLoadingRef.current) {
           isLoadingRef.current = true;
           onLoadMore();
-          
+
           // Reset after a brief delay to prevent duplicate calls
           setTimeout(() => {
             isLoadingRef.current = false;
@@ -36,8 +36,8 @@ export function useInfiniteScroll({
       },
       {
         rootMargin: `${threshold}px`,
-        threshold: 0
-      }
+        threshold: 0,
+      },
     );
 
     observer.observe(triggerRef.current);

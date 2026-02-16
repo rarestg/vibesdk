@@ -3,8 +3,8 @@
   .docs-sidebar,
   .export-buttons,
   button,
-  [role="navigation"],
-  [role="toolbar"],
+  [role='navigation'],
+  [role='toolbar'],
   .Toastier {
     display: none !important;
   }
@@ -96,7 +96,7 @@
   }
 
   a[href]::after {
-    content: " (" attr(href) ")";
+    content: ' (' attr(href) ')';
     font-size: 0.85em;
     color: #666;
     word-break: break-all;

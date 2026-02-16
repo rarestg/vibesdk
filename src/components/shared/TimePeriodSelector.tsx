@@ -27,7 +27,7 @@ export const TimePeriodSelector: React.FC<TimePeriodSelectorProps> = ({
   onValueChange,
   className,
   disabled,
-  showForSort = 'all'
+  showForSort = 'all',
 }) => {
   // Don't show the selector for 'recent' sort - it doesn't make sense
   if (showForSort !== 'all' && showForSort !== 'popular' && showForSort !== 'trending') {

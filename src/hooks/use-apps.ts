@@ -10,10 +10,9 @@ interface AppHookState<T> {
   refetch: () => void;
 }
 
-
 export function useApps(): AppHookState<AppWithFavoriteStatus> {
   const { allApps, loading, error, refetchAllApps } = useAppsData();
-  
+
   return {
     apps: allApps,
     loading: loading.allApps,
@@ -24,19 +23,19 @@ export function useApps(): AppHookState<AppWithFavoriteStatus> {
 
 export function useRecentApps() {
   const { recentApps, moreRecentAvailable, loading, error, refetchAllApps } = useAppsData();
-  
-  return { 
-    apps: recentApps, 
+
+  return {
+    apps: recentApps,
     moreAvailable: moreRecentAvailable,
-    loading: loading.allApps, 
-    error: error.allApps, 
-    refetch: refetchAllApps
+    loading: loading.allApps,
+    error: error.allApps,
+    refetch: refetchAllApps,
   };
 }
 
 export function useFavoriteApps(): AppHookState<AppWithFavoriteStatus> {
   const { favoriteApps, loading, error, refetchFavoriteApps } = useAppsData();
-  
+
   return {
     apps: favoriteApps,
     loading: loading.favoriteApps,
@@ -44,7 +43,6 @@ export function useFavoriteApps(): AppHookState<AppWithFavoriteStatus> {
     refetch: refetchFavoriteApps,
   };
 }
-
 
 export async function toggleFavorite(appId: string): Promise<boolean> {
   try {
@@ -67,11 +65,16 @@ export async function toggleFavorite(appId: string): Promise<boolean> {
 export function useToggleFavorite() {
   const { requireAuth } = useAuthGuard();
 
-  const protectedToggleFavorite = async (appId: string, actionContext = 'to favorite this app'): Promise<boolean | null> => {
-    if (!requireAuth({ 
-      requireFullAuth: true, 
-      actionContext 
-    })) {
+  const protectedToggleFavorite = async (
+    appId: string,
+    actionContext = 'to favorite this app',
+  ): Promise<boolean | null> => {
+    if (
+      !requireAuth({
+        requireFullAuth: true,
+        actionContext,
+      })
+    ) {
       return null;
     }
 

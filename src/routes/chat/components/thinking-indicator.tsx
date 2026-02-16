@@ -54,20 +54,20 @@ export function ThinkingIndicator({ visible }: ThinkingIndicatorProps) {
           initial={{ opacity: 0, y: 10, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -10, scale: 0.95 }}
-          transition={{ 
+          transition={{
             duration: 0.4,
-            ease: [0.23, 1, 0.32, 1]
+            ease: [0.23, 1, 0.32, 1],
           }}
           className="flex items-center gap-2 mt-3"
         >
           <motion.div
-            animate={{ 
+            animate={{
               rotate: [0, 360],
-              scale: [1, 1.1, 1]
+              scale: [1, 1.1, 1],
             }}
-            transition={{ 
-              rotate: { duration: 3, repeat: Infinity, ease: "linear" },
-              scale: { duration: 2, repeat: Infinity, ease: "easeInOut" }
+            transition={{
+              rotate: { duration: 3, repeat: Infinity, ease: 'linear' },
+              scale: { duration: 2, repeat: Infinity, ease: 'easeInOut' },
             }}
           >
             <Sparkles className="size-3 text-orange-400" />
@@ -78,9 +78,9 @@ export function ThinkingIndicator({ visible }: ThinkingIndicatorProps) {
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 10 }}
-              transition={{ 
+              transition={{
                 duration: 0.3,
-                ease: [0.23, 1, 0.32, 1]
+                ease: [0.23, 1, 0.32, 1],
               }}
               className="text-sm text-text-50/60 font-medium flex items-center gap-1"
             >

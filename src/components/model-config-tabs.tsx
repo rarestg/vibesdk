@@ -9,12 +9,7 @@ import { ConfigCard } from './config-card';
 import { ConfigModal } from './config-modal';
 import { categorizeAgent } from '@/utils/model-helpers';
 import { WORKFLOW_TABS } from '@/lib/constants/workflow-tabs';
-import type {
-  ModelConfig,
-  UserModelConfigWithMetadata,
-  ModelConfigUpdate,
-  AgentDisplayConfig
-} from '@/api-types';
+import type { ModelConfig, UserModelConfigWithMetadata, ModelConfigUpdate, AgentDisplayConfig } from '@/api-types';
 
 interface ModelConfigTabsProps {
   agentConfigs: AgentDisplayConfig[];
@@ -35,11 +30,11 @@ export function ModelConfigTabs({
   defaultConfigs,
   loadingConfigs,
   onSaveConfig,
-  onTestConfig, 
+  onTestConfig,
   onResetConfig,
   onResetAllConfigs,
   testingConfig,
-  savingConfigs
+  savingConfigs,
 }: ModelConfigTabsProps) {
   const [activeTab, setActiveTab] = useState('quickstart');
   const [searchTerm, setSearchTerm] = useState('');
@@ -47,23 +42,28 @@ export function ModelConfigTabs({
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Filter agent configs by search term
-  const filteredAgentConfigs = agentConfigs.filter(config =>
-    config.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    config.description.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredAgentConfigs = agentConfigs.filter(
+    (config) =>
+      config.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      config.description.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   // Get agents for a specific tab using dynamic categorization
-  const getAgentsForTab = useCallback((tabId: string) => {
-    return filteredAgentConfigs.filter(config => 
-      categorizeAgent(config.key) === tabId
-    );
-  }, [filteredAgentConfigs]);
+  const getAgentsForTab = useCallback(
+    (tabId: string) => {
+      return filteredAgentConfigs.filter((config) => categorizeAgent(config.key) === tabId);
+    },
+    [filteredAgentConfigs],
+  );
 
   // Count customized configs per tab
-  const getCustomizedCountForTab = useCallback((tabId: string) => {
-    const agents = getAgentsForTab(tabId);
-    return agents.filter(agent => modelConfigs[agent.key]?.isUserOverride).length;
-  }, [getAgentsForTab, modelConfigs]);
+  const getCustomizedCountForTab = useCallback(
+    (tabId: string) => {
+      const agents = getAgentsForTab(tabId);
+      return agents.filter((agent) => modelConfigs[agent.key]?.isUserOverride).length;
+    },
+    [getAgentsForTab, modelConfigs],
+  );
 
   // Handle opening config modal
   const handleConfigureAgent = (agentKey: string) => {
@@ -79,10 +79,8 @@ export function ModelConfigTabs({
 
   // Handle bulk test all configured agents
   const handleTestAllConfigured = async () => {
-    const customizedConfigs = agentConfigs.filter(config => 
-      modelConfigs[config.key]?.isUserOverride
-    );
-    
+    const customizedConfigs = agentConfigs.filter((config) => modelConfigs[config.key]?.isUserOverride);
+
     if (customizedConfigs.length === 0) {
       toast.info('No customized configurations to test');
       return;
@@ -122,7 +120,7 @@ export function ModelConfigTabs({
             Customize AI model settings for different operations. Organized by workflow stage.
           </p>
         </div>
-        
+
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           {/* Search */}
           <div className="relative">
@@ -134,26 +132,15 @@ export function ModelConfigTabs({
               className="pl-9 w-full sm:w-64 dark:bg-bg-1 bg-bg-4"
             />
           </div>
-          
+
           {/* Action buttons */}
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleTestAllConfigured}
-              className="gap-2"
-            >
+            <Button variant="outline" size="sm" onClick={handleTestAllConfigured} className="gap-2">
               <Play className="h-4 w-4" />
               Test All
             </Button>
-            
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onResetAllConfigs}
-              disabled={savingConfigs}
-              className="gap-2"
-            >
+
+            <Button variant="outline" size="sm" onClick={onResetAllConfigs} disabled={savingConfigs} className="gap-2">
               <RotateCcw className="h-4 w-4" />
               {savingConfigs ? 'Resetting...' : 'Reset All'}
             </Button>
@@ -167,10 +154,10 @@ export function ModelConfigTabs({
           {Object.values(WORKFLOW_TABS).map((tab) => {
             const Icon = tab.icon;
             const customizedCount = getCustomizedCountForTab(tab.id);
-            
+
             return (
-              <TabsTrigger 
-                key={tab.id} 
+              <TabsTrigger
+                key={tab.id}
                 value={tab.id}
                 className="flex flex-col gap-1 py-1 relative h-[calc(100%-4px)] min-h-[calc(100%-4px)] justify-center"
               >
@@ -179,7 +166,10 @@ export function ModelConfigTabs({
                   <span className="hidden sm:inline">{tab.label}</span>
                 </div>
                 {customizedCount > 0 && (
-                  <Badge variant="secondary" className="text-xs absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 flex items-center justify-center">
+                  <Badge
+                    variant="secondary"
+                    className="text-xs absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 flex items-center justify-center"
+                  >
                     {customizedCount}
                   </Badge>
                 )}
@@ -190,7 +180,7 @@ export function ModelConfigTabs({
 
         {Object.values(WORKFLOW_TABS).map((tab) => {
           const agents = getAgentsForTab(tab.id);
-          
+
           return (
             <TabsContent key={tab.id} value={tab.id} className="mt-6">
               <div className="space-y-4">
@@ -236,7 +226,7 @@ export function ModelConfigTabs({
         <ConfigModal
           isOpen={isModalOpen}
           onClose={handleCloseModal}
-          agentConfig={agentConfigs.find(a => a.key === selectedConfigKey)!}
+          agentConfig={agentConfigs.find((a) => a.key === selectedConfigKey)!}
           userConfig={modelConfigs[selectedConfigKey]}
           defaultConfig={defaultConfigs[selectedConfigKey]}
           onSave={(config) => onSaveConfig(selectedConfigKey, config)}

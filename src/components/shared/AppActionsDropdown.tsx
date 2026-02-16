@@ -29,7 +29,7 @@ export function AppActionsDropdown({
   className = '',
   variant = 'ghost',
   size = 'icon',
-  showOnHover = false
+  showOnHover = false,
 }: AppActionsDropdownProps) {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -38,11 +38,11 @@ export function AppActionsDropdown({
     try {
       setIsDeleting(true);
       const response = await apiClient.deleteApp(appId);
-      
+
       if (response.success) {
         toast.success('App deleted successfully');
         setIsDeleteDialogOpen(false);
-        
+
         appEvents.emitAppDeleted(appId);
         onAppDeleted?.();
       }
@@ -54,7 +54,7 @@ export function AppActionsDropdown({
     }
   };
 
-  const buttonClasses = showOnHover 
+  const buttonClasses = showOnHover
     ? `opacity-0 group-hover:opacity-100 transition-all duration-200 hover:bg-bg-3/80 cursor-pointer ${className}`
     : `hover:bg-bg-3/80 cursor-pointer ${className}`;
 
@@ -87,7 +87,6 @@ export function AppActionsDropdown({
             <Trash2 className="h-4 w-4 mr-2" />
             Delete app
           </DropdownMenuItem>
-
         </DropdownMenuContent>
       </DropdownMenu>
 

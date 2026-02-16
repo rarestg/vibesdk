@@ -1,28 +1,25 @@
-import js from '@eslint/js'
-import globals from 'globals'
-import reactHooks from 'eslint-plugin-react-hooks'
-import reactRefresh from 'eslint-plugin-react-refresh'
-import tseslint from 'typescript-eslint'
-import importPlugin from 'eslint-plugin-import'
+import js from '@eslint/js';
+import globals from 'globals';
+import reactHooks from 'eslint-plugin-react-hooks';
+import reactRefresh from 'eslint-plugin-react-refresh';
+import tseslint from 'typescript-eslint';
+import importPlugin from 'eslint-plugin-import';
 
 export default tseslint.config(
-	{
-		ignores: [
-			'dist',
-			'wrangler-configuration.d.ts',
-			'test-diff-formatters/**',
-			'cf-git/**',
-			'**/*.test.ts',
-			'**/*.test.tsx',
-			'**/*.spec.ts',
-			'**/*.spec.tsx',
-		],
-	},
   {
-    extends: [
-      js.configs.recommended,
-      ...tseslint.configs.recommended
+    ignores: [
+      'dist',
+      'wrangler-configuration.d.ts',
+      'test-diff-formatters/**',
+      'cf-git/**',
+      '**/*.test.ts',
+      '**/*.test.tsx',
+      '**/*.spec.ts',
+      '**/*.spec.tsx',
     ],
+  },
+  {
+    extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ['src/**/*.{ts,tsx}', 'worker/**/*.{ts,tsx}'],
     languageOptions: {
       ecmaVersion: 2022,
@@ -37,10 +34,7 @@ export default tseslint.config(
       'react-hooks/exhaustive-deps': 'error',
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unused-vars': 'off',
-      'react-refresh/only-export-components': [
-        'warn',
-        { allowConstantExport: true },
-      ],
+      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
     },
     settings: {
       'import/resolver': {
@@ -71,4 +65,4 @@ export default tseslint.config(
       'react-refresh/only-export-components': 'off',
     },
   },
-)
+);

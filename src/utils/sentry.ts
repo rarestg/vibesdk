@@ -1,11 +1,6 @@
 import * as Sentry from '@sentry/react';
 import { useEffect } from 'react';
-import {
-  createRoutesFromChildren,
-  matchRoutes,
-  useLocation,
-  useNavigationType,
-} from 'react-router';
+import { createRoutesFromChildren, matchRoutes, useLocation, useNavigationType } from 'react-router';
 
 /**
  * Initialize Sentry for frontend error tracking and session replay
@@ -14,7 +9,7 @@ export function initSentry() {
   const dsn = import.meta.env.VITE_SENTRY_DSN;
   const environment = import.meta.env.VITE_ENVIRONMENT || 'development';
   const release = import.meta.env.VITE_RELEASE || 'unknown';
-  
+
   if (!dsn) {
     console.warn('Sentry DSN not configured, skipping initialization');
     return;
@@ -24,10 +19,10 @@ export function initSentry() {
     dsn,
     environment,
     release,
-    
+
     // Use tunnel to bypass ad blockers
     tunnel: '/api/sentry/tunnel',
-    
+
     // Integrations
     integrations: [
       // React Router integration
@@ -38,21 +33,21 @@ export function initSentry() {
         createRoutesFromChildren,
         matchRoutes,
       }),
-      
+
       // Session Replay
       Sentry.replayIntegration({
         maskAllText: false,
         maskAllInputs: true,
       }),
     ],
-    
+
     // Performance Monitoring
     tracesSampleRate: environment === 'production' ? 0.1 : 1.0,
-    
+
     // Replay sampling rates
     replaysSessionSampleRate: environment === 'production' ? 0.1 : 1.0,
     replaysOnErrorSampleRate: 1.0,
-    
+
     // Only enable in production/staging
     enabled: environment !== 'development',
   });
@@ -85,7 +80,7 @@ export function addBreadcrumb(
   message: string,
   category: string,
   level: Sentry.SeverityLevel = 'info',
-  data?: Record<string, any>
+  data?: Record<string, any>,
 ) {
   Sentry.addBreadcrumb({
     message,
