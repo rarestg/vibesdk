@@ -336,6 +336,8 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
 
     // Increment generation to invalidate any stale retry loops
     this.deploymentGeneration++;
+    const activeGeneration = this.deploymentGeneration;
+    const deploymentCycleId = generateId();
 
     logger.info('Deploying to sandbox', {
       files: files.length,
@@ -343,6 +345,7 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
       commitMessage,
       sessionId: this.getSessionId(),
       generation: this.deploymentGeneration,
+      deploymentCycleId,
     });
 
     // Create deployment promise
@@ -352,16 +355,25 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
       commitMessage,
       clearLogs,
       callbacks,
+      deploymentCycleId,
     );
 
+    let masterTimedOut = false;
     try {
       // Master timeout: 5 minutes total
-      // This doesn't break the underlying operation - it just stops waiting
+      // If timeout is reached, supersede this loop so stale retries can exit.
       const result = await this.withTimeout(
         this.currentDeploymentPromise,
         MASTER_DEPLOYMENT_TIMEOUT_MS,
         'Deployment failed after 5 minutes of retries',
-        // No onTimeout callback - don't break the operation
+        () => {
+          masterTimedOut = true;
+          this.deploymentGeneration++;
+          logger.error('Master deployment timeout reached, superseding in-flight deployment loop', {
+            timedOutGeneration: activeGeneration,
+            supersededGeneration: this.deploymentGeneration,
+          });
+        },
       );
       return result;
     } catch (error) {
@@ -372,6 +384,13 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
       } else {
         // Master timeout reached - all retries exhausted
         logger.error('Deployment permanently failed after master timeout:', error);
+        if (masterTimedOut) {
+          callbacks?.onError?.({
+            error: 'Deployment failed after 5 minutes of retries',
+            terminal: true,
+            deploymentCycleId,
+          });
+        }
       }
       return null;
     } finally {
@@ -392,6 +411,7 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
     commitMessage: string | undefined,
     clearLogs: boolean,
     callbacks?: SandboxDeploymentCallbacks,
+    deploymentCycleId?: string,
   ): Promise<PreviewType | null> {
     const logger = this.getLog();
     let attempt = 0;
@@ -447,10 +467,15 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
       logger.info(`Deployment attempt ${attemptNumber}`, { sessionId: this.getSessionId() });
 
       try {
-        callbacks?.onStarted?.({
-          message: 'Deploying code to sandbox service',
-          files: files.map((f) => ({ filePath: f.filePath })),
-        });
+        // Signal start only once per deployment cycle. Retries are internal unless terminally failed.
+        if (attemptNumber === 1) {
+          callbacks?.onStarted?.({
+            message: 'Deploying code to sandbox service',
+            files: files.map((f) => ({ filePath: f.filePath })),
+            attempt: attemptNumber,
+            deploymentCycleId,
+          });
+        }
 
         // Core deployment with per-attempt timeout
         deployPromise = this.deploy({
@@ -548,10 +573,6 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
           sandboxInstanceId: undefined,
         });
 
-        callbacks?.onError?.({
-          error: `Deployment attempt ${attemptNumber} failed: ${errorMsg}`,
-        });
-
         // Exponential backoff before retry (capped at 30 seconds)
         const backoffMs = Math.min(1000 * Math.pow(2, Math.min(attemptNumber - 1, 5)), 30000);
         logger.info(`Retrying deployment in ${backoffMs}ms...`);
@@ -586,6 +607,8 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
         instanceId: preview.runId,
         previewURL: preview.previewURL ?? '',
         tunnelURL: preview.tunnelURL ?? '',
+        attempt: attemptNumber,
+        deploymentCycleId,
       });
 
       logger.info('Deployment succeeded', { attempt: attemptNumber, sessionId: this.getSessionId() });

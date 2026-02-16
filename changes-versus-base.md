@@ -5,45 +5,48 @@ Repo: `<REPO_ROOT>`
 
 ## Purpose
 
-This document is an onboarding summary of what changed in this fork versus its base, with formatting noise separated from functional changes.
+This is the onboarding summary of what changed in this fork versus base, with formatting churn separated from functional work.
 
 ## Baselines
 
-1. Fork base (merge-base with `upstream/main`): `6440eb51831744fc3fbc09a20641a294ba796717`  
+1. Fork base (`merge-base` with `upstream/main`):  
+   `6440eb51831744fc3fbc09a20641a294ba796717`  
    Commit: `Merge pull request #328 from cloudflare/nightly`
-2. Post-format baseline: `7128322e12e17e77d39530806ba06d63c94dfdfc`  
-   Commit: `chore: add second formatting commit to blame-ignore-revs`
-3. Current main at branch start: `30d24d0`
+2. Formatting baseline (pre-functional tree anchor):  
+   `f26aaca` (tree-equivalent to historical `7128322e12e17e77d39530806ba06d63c94dfdfc`)
+3. Current squashed `main` commits after base:
+   - `f26aaca` `chore: squash formatting pass (16cffa6..7128322)`
+   - `85fc9f4` `fix: squash local mac m1 sandbox reliability changes (563c7f8..6cc763d)`
 
 Why two baselines:
 
 - `6440eb5..HEAD` captures all fork changes (including large formatting churn).
-- `7128322..HEAD` isolates the functional changes merged in this stabilization wave.
+- `f26aaca..85fc9f4` isolates functional/stabilization work.
 
 ## Delta Summary
 
-1. Formatting/meta wave (`6440eb5..7128322`):
+1. Formatting/meta wave (`6440eb5..f26aaca`):
    - 557 files changed, 78,394 insertions, 79,545 deletions
    - primarily formatting + blame-ignore setup
-2. Functional wave (`7128322..HEAD`):
-   - 8 files changed, 397 insertions, 188 deletions
-   - reliability, deployment, local Apple Silicon support, and model config updates
+2. Functional/stabilization wave (`f26aaca..85fc9f4`):
+   - 20 files changed, 2,129 insertions, 198 deletions
+   - reliability, deployment hardening, Apple Silicon local support, local docker portability, route fix, and handoff docs
+3. Total (`6440eb5..HEAD`):
+   - 567 files changed, 80,321 insertions, 79,541 deletions
 
-## Merged Functional Workstreams
+## Functional Workstreams Included (Now Squashed)
+
+Original work merged into this functional wave includes:
 
 1. `fix/sandbox-file-write-robustness` (PR #2)
 2. `fix/frontend-preview-dedupe-and-ws-normalization` (PR #5)
 3. `fix/deployment-retry-improvements` (PR #3)
 4. `fix/apple-silicon-sandbox-platform` (PR #1)
 5. `feat/update-model-inference-config` (PR #4)
+6. `codex/fix-stale-loop-and-signal-restore` (PR #6)
+7. local sandbox/mac portability + warning-analysis docs (PR #7 + PR #8)
 
-Representative commits (since `7128322`):
-
-- `563c7f8`, `b47d254`, `ed2ffcc`, `0258e91`
-- `b49e0dc`, `c8fdc39`
-- `d925320`, `e80d278`
-- `6eeea0d`, `822bb8a`
-- `9ce647e`, `14cc524`
+These are intentionally condensed into one functional commit (`85fc9f4`) for cleaner history.
 
 ## Functional Changes by Area
 
@@ -55,15 +58,10 @@ File:
 
 What changed:
 
-- replaced chunked `btoa` concatenation with deterministic UTF-8 base64 encoding
-- hardened shell writing (`printf '%s' | base64 -d`) and single-quote escaping for paths
-- switched temp script path to per-operation unique file
-- added script cleanup in `finally`
-- propagated partial write failures instead of returning blanket success
-
-Effect:
-
-- reduced corruption/collision risk and made partial failures visible to retry logic
+- deterministic UTF-8 base64 handling
+- hardened shell write path and path escaping
+- unique temp script usage + cleanup
+- better partial-failure propagation
 
 ### 2) Frontend preview deploy dedupe + WS envelope normalization
 
@@ -74,16 +72,11 @@ Files:
 
 What changed:
 
-- added in-flight preview deploy guard refs
-- added stale guard timeout reset logic (30s window)
-- prevented repeated auto-preview requests during reconnect/state replay while a request is in flight
-- normalized malformed websocket envelopes where `type` contains a JSON string payload
+- in-flight deploy guards
+- stale guard timeout reset logic
+- normalized malformed websocket envelope payloads
 
-Effect:
-
-- lower duplicate deploy pressure and cleaner WS state restoration behavior
-
-### 3) Deployment retry hardening
+### 3) Deployment retry/stale-loop hardening
 
 File:
 
@@ -91,23 +84,12 @@ File:
 
 What changed:
 
-- per-attempt timeout raised from 60s to 150s to exceed sandbox SDK internal retry window
-- deployment generation tokens added to detect superseded retry loops
-- stale checks added at pre-attempt, post-cooldown, and post-result points
-- stale guards now also prevent stale-loop timeout and catch-path state mutations from resetting session state after supersession
-- circuit breaker added:
-  - threshold: 5 startup-failure matches
-  - cooldown: 60s
-- startup-failure counter resets on non-startup errors (true consecutive semantics)
-- per-attempt guard prevents duplicate session resets
-- timeout late-completion diagnostics added
-- health-check redeploy skips when deployment is already in progress
+- longer per-attempt timeout
+- generation-token stale guards
+- stale-safe reset behavior
+- startup-failure circuit breaker improvements
 
-Effect:
-
-- reduces retry-loop amplification and improves resilience/observability during runtime instability
-
-### 4) Apple Silicon local sandbox platform strategy
+### 4) Apple Silicon local sandbox strategy
 
 Files:
 
@@ -117,16 +99,8 @@ Files:
 
 What changed:
 
-- local Dockerfile base explicitly set to `--platform=linux/amd64`
-- cloudflared architecture resolution moved to runtime detection (`dpkg --print-architecture` fallback `uname -m`)
-- setup patching now only applies on Apple Silicon (`arm64` + `darwin`)
-- setup rewrites legacy arm64 platform overrides to amd64 override
-- deployment cleanup strips both arm64 and amd64 local overrides before deploy, then restores original content in `finally`
-- signal cleanup now also restores Dockerfile local platform flags before exiting on SIGINT/SIGTERM
-
-Effect:
-
-- unblocks Apple Silicon local setup against amd64-only sandbox image manifests while keeping deploy path clean
+- local amd64 platform strategy for Docker image compatibility on Apple Silicon
+- setup/deploy cleanup and restoration hardening
 
 ### 5) Model inference configuration updates
 
@@ -136,51 +110,67 @@ File:
 
 What changed:
 
-- removed unused `LiteModels` / `RegularModels` imports
-- moved broad fallback usage to `GEMINI_3_FLASH_PREVIEW`
-- default Gemini configuration moved to PRO-primary + FLASH-fallback mapping for major operations
-- expanded constraints to `AllModels` for:
-  - `projectSetup`
-  - `conversationalResponse`
-  - `templateSelection`
+- updated Gemini model routing defaults/fallback behavior
+- expanded model constraints in selected operations
 
-Effect:
+### 6) Local docker host portability + route/preview fixes
 
-- restores meaningful fallback behavior and broadens model routing flexibility
+Files:
 
-## File-Level Functional Delta (`7128322..HEAD`)
+- `package.json`
+- `scripts/dev.ts` (new)
+- `src/lib/utils.ts`
+- `worker/api/routes/index.ts`
 
+What changed:
+
+- moved `dev` launcher to `tsx scripts/dev.ts`
+- auto-detects docker socket and sets `WRANGLER_DOCKER_HOST` without hardcoding a user path
+- preserves `npm run dev -- <vite flags>` forwarding
+- local preview URL fallback prefers tunnel URL in dev
+- re-enabled user secrets vault route registration
+
+### 7) Documentation/handoff additions
+
+Added files:
+
+- `VIBESDK-ARCHITECTURE-DEEP-DIVE.md`
+- `changes-versus-base.md` (this file)
+- `rarestg-docs/sandbox-creation-failure-report.md`
+- `rarestg-docs/sandbox-creation-failure-report-extra.md`
+- `rarestg-docs/vault-status-bug-report.md`
+- `rarestg-docs/monaco-editor-bug-report.md`
+- `rarestg-docs/MONACO-INMEMORY-MODEL-WARNING-FIX-GUIDE.md`
+- `FRAMER-TRANSFORMORIGIN-WARNING-FIX-GUIDE.md`
+
+Notes:
+
+- Monaco/Framer warning work in this wave is documentation + fix guidance, not direct code patches for those warnings yet.
+
+## File-Level Functional Delta (`f26aaca..85fc9f4`)
+
+- `FRAMER-TRANSFORMORIGIN-WARNING-FIX-GUIDE.md`: +139 / -0
+- `rarestg-docs/MONACO-INMEMORY-MODEL-WARNING-FIX-GUIDE.md`: +152 / -0
 - `SandboxDockerfile`: +6 / -6
-- `scripts/deploy.ts`: +19 / -22
+- `VIBESDK-ARCHITECTURE-DEEP-DIVE.md`: +536 / -0
+- `changes-versus-base.md`: +198 / -0
+- `rarestg-docs/monaco-editor-bug-report.md`: +60 / -0
+- `package.json`: +1 / -1
+- `rarestg-docs/sandbox-creation-failure-report-extra.md`: +196 / -0
+- `rarestg-docs/sandbox-creation-failure-report.md`: +248 / -0
+- `scripts/deploy.ts`: +53 / -27
+- `scripts/dev.ts`: +57 / -0
 - `scripts/setup.ts`: +32 / -17
+- `src/lib/utils.ts`: +15 / -1
 - `src/routes/chat/hooks/use-chat.ts`: +20 / -2
 - `src/routes/chat/utils/handle-websocket-message.ts`: +42 / -6
+- `rarestg-docs/vault-status-bug-report.md`: +77 / -0
 - `worker/agents/inferutils/config.ts`: +60 / -56
-- `worker/agents/services/implementations/DeploymentManager.ts`: +168 / -44
+- `worker/agents/services/implementations/DeploymentManager.ts`: +184 / -44
+- `worker/api/routes/index.ts`: +3 / -3
 - `worker/services/sandbox/sandboxSdkClient.ts`: +50 / -35
 
-Total: 8 files, 397 insertions, 188 deletions
-
-## Verification Snapshot
-
-Executed on branch `codex/fix-stale-loop-and-signal-restore` at 2026-02-16 11:20 EST:
-
-1. `npm run typecheck` -> pass
-2. `npm run lint` -> pass
-3. `npm run build` -> pass (warnings only)
-4. `npm run test` -> pass (`9` test files, `213` passed, `1` skipped)
-
-Observed non-blocking warnings:
-
-- Vite/Rolldown warning for deprecated `optimizeDeps.esbuildOptions`
-- chunk-size warnings during frontend build
-- expected noisy stderr from parser fuzz/safety tests
-
-## Known Follow-ups
-
-1. The two previously tracked risks below are addressed in branch `codex/fix-stale-loop-and-signal-restore` and intended to merge via the next PR:
-   - stale deployment loops mutating shared state in failure paths after supersession
-   - SIGINT/SIGTERM cleanup bypassing Dockerfile local-flag restoration
+Total: 20 files, 2,129 insertions, 198 deletions
 
 ## Recompute Commands
 
@@ -188,11 +178,16 @@ Observed non-blocking warnings:
 # Confirm fork base
 git merge-base main upstream/main
 
-# All fork changes (includes formatting churn)
+# Show squashed commits after base
+git log --reverse --oneline 6440eb5..HEAD
+
+# Full delta (formatting + functional)
 git diff --shortstat 6440eb5..HEAD
 
-# Functional-only delta used above
-git diff --shortstat 7128322..HEAD
-git diff --numstat 7128322..HEAD
-git log --reverse --no-merges --oneline 7128322..HEAD
+# Formatting wave
+git diff --shortstat 6440eb5..f26aaca
+
+# Functional wave
+git diff --shortstat f26aaca..85fc9f4
+git diff --numstat f26aaca..85fc9f4
 ```

@@ -8,6 +8,9 @@
   "main": "worker/index.ts",
   "compatibility_date": "2025-08-10",
   "compatibility_flags": ["nodejs_compat"],
+  "dev": {
+    "enable_containers": true,
+  },
   "version_metadata": {
     "binding": "CF_VERSION_METADATA",
   },
@@ -48,13 +51,14 @@
     "binding": "AI",
     "remote": true,
   },
-  "dispatch_namespaces": [
-    {
-      "binding": "DISPATCHER",
-      "namespace": "vibesdk-default-namespace",
-      "remote": true,
-    },
-  ],
+  // Disabled for local dev - requires Workers for Platforms subscription
+  // "dispatch_namespaces": [
+  //   {
+  //     "binding": "DISPATCHER",
+  //     "namespace": "vibesdk-default-namespace",
+  //     "remote": true,
+  //   },
+  // ],
   "containers": [
     {
       "class_name": "UserAppSandboxService",
@@ -75,7 +79,7 @@
     {
       "binding": "DB",
       "database_name": "vibesdk-db",
-      "database_id": "c4721a2b-b96a-428a-8b2a-b3d255b307e9",
+      "database_id": "0423bdf4-8700-4dc9-ae8d-932029035ba1",
       "migrations_dir": "migrations",
       "remote": true,
     },
@@ -110,7 +114,7 @@
   "kv_namespaces": [
     {
       "binding": "VibecoderStore",
-      "id": "f066f3c2e4824981b48e8586c04db9c1",
+      "id": "7663b497af4e4880aafeba3eb4e2d1fb",
       "remote": true,
     },
   ],
