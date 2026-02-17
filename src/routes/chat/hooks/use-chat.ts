@@ -352,10 +352,12 @@ export function useChat({
 
           // Request file generation for new chats only
           if (!disableGenerate && !hasRequestedInitialGenerationRef.current) {
-            logger.debug('🔄 Starting code generation for new chat');
-            hasRequestedInitialGenerationRef.current = true;
-            setIsGenerating(true);
-            sendWebSocketMessage(ws, 'generate_all');
+            const sentGenerateAll = sendWebSocketMessage(ws, 'generate_all');
+            if (sentGenerateAll) {
+              logger.debug('Starting code generation for new chat');
+              hasRequestedInitialGenerationRef.current = true;
+              setIsGenerating(true);
+            }
           }
         });
 

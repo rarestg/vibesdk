@@ -130,6 +130,7 @@ export type {
   ModelConfigsInfoMessage,
   AgentDisplayConfig,
   ModelConfigsInfo,
+  StaticAnalysisResults,
 } from 'worker/api/websocketTypes';
 
 // Database/Schema Types commonly used in frontend

@@ -261,7 +261,9 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
     const { sandboxInstanceId } = this.getState();
 
     if (!sandboxInstanceId) {
-      throw new Error('No sandbox instance available for static analysis');
+      throw new AppError(AppErrorType.CONFLICT_ERROR, 'No sandbox instance available for static analysis', 409, {
+        reason: 'missing_sandbox_instance_for_static_analysis',
+      });
     }
 
     const logger = this.getLog();
@@ -276,7 +278,11 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
     if (!analysisResponse || analysisResponse.error) {
       const errorMsg = `Code linting failed: ${analysisResponse?.error || 'Unknown error'}`;
       logger.error(errorMsg, { fullResponse: analysisResponse });
-      throw new Error(errorMsg);
+      throw new AppError(AppErrorType.EXTERNAL_SERVICE_ERROR, errorMsg, 502, {
+        reason: 'sandbox_static_analysis_failed',
+        sandboxInstanceId,
+        analysisError: analysisResponse?.error,
+      });
     }
 
     const { lint, typecheck } = analysisResponse;
@@ -306,7 +312,9 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
   async fetchRuntimeErrors(clear: boolean = true): Promise<RuntimeError[]> {
     const { sandboxInstanceId } = this.getState();
     if (!sandboxInstanceId) {
-      throw new Error('No sandbox instance available for runtime error fetching');
+      throw new AppError(AppErrorType.CONFLICT_ERROR, 'No sandbox instance available for runtime error fetching', 409, {
+        reason: 'missing_sandbox_instance_for_runtime_errors',
+      });
     }
     const logger = this.getLog();
     const client = this.getClient();
@@ -314,7 +322,16 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
     const resp = await client.getInstanceErrors(sandboxInstanceId, clear);
 
     if (!resp || !resp.success) {
-      throw new Error(`Failed to fetch runtime errors: ${resp?.error || 'Unknown error'}`);
+      throw new AppError(
+        AppErrorType.EXTERNAL_SERVICE_ERROR,
+        `Failed to fetch runtime errors: ${resp?.error || 'Unknown error'}`,
+        502,
+        {
+          reason: 'sandbox_runtime_errors_fetch_failed',
+          sandboxInstanceId,
+          responseError: resp?.error,
+        },
+      );
     }
 
     const errors = resp.errors || [];
@@ -655,7 +672,16 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
 
       if (!writeResponse || !writeResponse.success) {
         logger.error(`File writing failed. Error: ${writeResponse?.error}`);
-        throw new Error(`File writing failed. Error: ${writeResponse?.error}`);
+        throw new AppError(
+          AppErrorType.EXTERNAL_SERVICE_ERROR,
+          `File writing failed. Error: ${writeResponse?.error || 'Unknown error'}`,
+          502,
+          {
+            reason: 'sandbox_file_write_failed',
+            sandboxInstanceId,
+            writeError: writeResponse?.error,
+          },
+        );
       }
 
       logger.info('Files written to sandbox instance', {
@@ -730,7 +756,12 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
 
     const results = await this.createNewInstance();
     if (!results || !results.runId || !results.previewURL) {
-      throw new Error('Failed to create new deployment');
+      throw new AppError(AppErrorType.EXTERNAL_SERVICE_ERROR, 'Failed to create new deployment', 502, {
+        reason: 'create_deployment_missing_preview',
+        hasResult: !!results,
+        runId: results?.runId,
+        previewURL: results?.previewURL,
+      });
     }
 
     // Update state with new instance ID
@@ -785,7 +816,16 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
     });
 
     if (!createResponse || !createResponse.success || !createResponse.runId) {
-      throw new Error(`Failed to create sandbox instance: ${createResponse?.error || 'Unknown error'}`);
+      throw new AppError(
+        AppErrorType.EXTERNAL_SERVICE_ERROR,
+        `Failed to create sandbox instance: ${createResponse?.error || 'Unknown error'}`,
+        502,
+        {
+          reason: 'sandbox_create_instance_failed',
+          createError: createResponse?.error,
+          runId: createResponse?.runId,
+        },
+      );
     }
 
     logger.info(`Created sandbox instance`, {
