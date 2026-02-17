@@ -890,8 +890,16 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
     logger.warn(`Shutting down stale sandbox instance ${instanceId} before recreate`);
     const shutdownResponse = await client.shutdownInstance(instanceId);
     if (!shutdownResponse.success) {
-      throw new Error(
-        `Failed to shutdown stale sandbox instance ${instanceId}: ${shutdownResponse.error || 'Unknown error'}`,
+      throw new AppError(
+        AppErrorType.EXTERNAL_SERVICE_ERROR,
+        `Failed to shutdown stale sandbox instance ${instanceId}`,
+        502,
+        {
+          instanceId,
+          reason: 'shutdown_stale_instance_failed',
+          shutdownError: shutdownResponse.error || 'Unknown error',
+          shutdownMessage: shutdownResponse.message,
+        },
       );
     }
 
