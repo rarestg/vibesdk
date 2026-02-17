@@ -155,6 +155,7 @@ export function createWebSocketMessageHandler(deps: HandleMessageDeps) {
       setIsGenerationPaused,
       setIsGenerating,
       setIsPhaseProgressActive,
+      setStaticIssueCount,
       setIsDebugging,
       setBehaviorType,
       setInternalProjectType,
@@ -190,6 +191,7 @@ export function createWebSocketMessageHandler(deps: HandleMessageDeps) {
         logger.warn('Resetting stale preview deploy guard', { context, ageMs });
         previewDeployInFlightRef.current = false;
         previewDeployRequestStartedAtRef.current = null;
+        setIsPreviewDeploying(false);
       }
     };
 
@@ -640,6 +642,9 @@ export function createWebSocketMessageHandler(deps: HandleMessageDeps) {
         sendMessage(createAIMessage('generation-complete', 'Code generation has been completed.'));
 
         // Reset all phase indicators
+        previewDeployInFlightRef.current = false;
+        previewDeployRequestStartedAtRef.current = null;
+        setIsPreviewDeploying(false);
         setIsPhaseProgressActive(false);
         setIsThinking(false);
         setIsGenerating(false);
@@ -663,6 +668,17 @@ export function createWebSocketMessageHandler(deps: HandleMessageDeps) {
       }
 
       case 'deployment_failed': {
+        const isAttemptLevelFailure = message.terminal === false;
+
+        if (isAttemptLevelFailure) {
+          // Retryable failure; keep UI in deploying state and wait for terminal success/failure.
+          logger.warn('Ignoring retryable deployment failure event', message);
+          previewDeployInFlightRef.current = true;
+          previewDeployRequestStartedAtRef.current = null;
+          setIsPreviewDeploying(true);
+          break;
+        }
+
         previewDeployInFlightRef.current = false;
         previewDeployRequestStartedAtRef.current = null;
         setIsPreviewDeploying(false);
@@ -686,6 +702,24 @@ export function createWebSocketMessageHandler(deps: HandleMessageDeps) {
         }
 
         sendMessage(createAIMessage('code_reviewed', reviewMessage));
+        break;
+      }
+
+      case 'static_analysis_results': {
+        const payload = message as {
+          lint?: { issues?: unknown[] };
+          typecheck?: { issues?: unknown[] };
+          staticAnalysis?: {
+            lint?: { issues?: unknown[] };
+            typecheck?: { issues?: unknown[] };
+          };
+        };
+
+        const lintIssues = payload.lint?.issues?.length ?? payload.staticAnalysis?.lint?.issues?.length ?? 0;
+        const typecheckIssues =
+          payload.typecheck?.issues?.length ?? payload.staticAnalysis?.typecheck?.issues?.length ?? 0;
+
+        setStaticIssueCount(lintIssues + typecheckIssues);
         break;
       }
 
