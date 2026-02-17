@@ -58,6 +58,18 @@ export const PreviewIframe = forwardRef<HTMLIFrameElement, PreviewIframeProps>(
      * Returns preview type if accessible, null otherwise
      */
     const testAvailability = useCallback(async (url: string): Promise<'sandbox' | 'dispatcher' | null> => {
+      // Tunnel URLs do not reliably support CORS HEAD probes from localhost in dev.
+      // Let the iframe load directly instead of treating CORS probe failures as preview outages.
+      try {
+        const hostname = new URL(url).hostname;
+        if (import.meta.env.DEV && hostname.endsWith('.trycloudflare.com')) {
+          console.log('Skipping CORS HEAD availability probe for tunnel URL in dev mode');
+          return 'sandbox';
+        }
+      } catch {
+        // Ignore URL parse errors and proceed with normal probe path.
+      }
+
       try {
         const response = await fetch(url, {
           method: 'HEAD',

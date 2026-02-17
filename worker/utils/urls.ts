@@ -36,6 +36,22 @@ export function migratePreviewUrl(storedUrl: string | undefined, env: Env): stri
     const hostname = url.hostname;
     const currentDomain = getPreviewDomain(env);
 
+    // Tunnel/local preview URLs should not be rewritten to custom domains.
+    if (
+      hostname.endsWith('.trycloudflare.com') ||
+      hostname === 'localhost' ||
+      hostname.endsWith('.localhost') ||
+      hostname === '127.0.0.1' ||
+      hostname === '0.0.0.0' ||
+      hostname === '::1'
+    ) {
+      return storedUrl;
+    }
+
+    if (!currentDomain || currentDomain.trim() === '') {
+      return storedUrl;
+    }
+
     // Already using current domain
     if (hostname.endsWith(`.${currentDomain}`)) {
       return storedUrl;
@@ -54,9 +70,27 @@ export function migratePreviewUrl(storedUrl: string | undefined, env: Env): stri
   }
 }
 
-export function buildGitCloneUrl(env: Env, appId: string, token?: string): string {
-  const domain = env.CUSTOM_DOMAIN;
-  const protocol = getProtocolForHost(domain);
+export function buildGitCloneUrl(env: Env, appId: string, token?: string, request?: Request): string {
+  let domain = env.CUSTOM_DOMAIN;
+
+  if (request) {
+    try {
+      // In local dev, requests come from localhost:5173 and clone URLs must match that host.
+      domain = new URL(request.url).host || domain;
+    } catch {
+      // Keep env.CUSTOM_DOMAIN fallback if request URL parsing fails.
+    }
+  }
+
+  let hostForProtocol = domain;
+  try {
+    // Normalizes hosts like "[::1]:5173" to "::1" for local protocol detection.
+    hostForProtocol = (new URL(`http://${domain}`).hostname || domain).replace(/^\[|\]$/g, '');
+  } catch {
+    hostForProtocol = domain;
+  }
+
+  const protocol = getProtocolForHost(hostForProtocol);
   // Git expects username:password format. Use 'oauth2' as username and token as password
   // This is a standard pattern for token-based git authentication
   const auth = token ? `oauth2:${token}@` : '';

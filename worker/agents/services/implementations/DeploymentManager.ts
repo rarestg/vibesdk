@@ -7,6 +7,7 @@ import {
 } from '../interfaces/IDeploymentManager';
 import {
   BootstrapResponse,
+  BootstrapStatusResponse,
   StaticAnalysisResponse,
   RuntimeError,
   PreviewType,
@@ -27,6 +28,8 @@ import { AppError, AppErrorType } from '../../../utils/ErrorHandling';
 const PER_ATTEMPT_TIMEOUT_MS = 150000; // 150 seconds (sandbox 120s + 30s margin)
 const MASTER_DEPLOYMENT_TIMEOUT_MS = 300000; // 5 minutes total
 const HEALTH_CHECK_INTERVAL_MS = 30000;
+const PREVIEW_URL_WAIT_TIMEOUT_MS = 30000;
+const PREVIEW_URL_POLL_INTERVAL_MS = 1000;
 
 // Circuit breaker: stop hammering sandbox after repeated startup failures
 const CIRCUIT_BREAKER_THRESHOLD = 5; // consecutive failures before cooldown
@@ -212,22 +215,36 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
         const client = this.getClient();
         const status = await client.getInstanceStatus(instanceId);
 
-        if (!status.success || !status.isHealthy) {
-          logger.warn(`Instance ${instanceId} unhealthy, triggering redeploy`);
-          this.clearHealthCheckInterval();
+        if (!status.success) {
+          await this.redeployFromHealthCheck(instanceId);
+          return;
+        }
 
-          // Trigger redeploy to recover from unhealthy state
-          try {
-            await this.deployToSandbox();
-            logger.info('Instance redeployed successfully after health check failure');
-          } catch (redeployError) {
-            logger.error('Failed to redeploy after health check failure:', redeployError);
-          }
+        if (status.pending) {
+          logger.info(`Instance ${instanceId} health check pending: ${status.message || 'waiting for readiness'}`);
+          return;
+        }
+
+        if (!status.isHealthy) {
+          await this.redeployFromHealthCheck(instanceId);
         }
       } catch (error) {
         logger.error('Health check failed:', error);
       }
     }, HEALTH_CHECK_INTERVAL_MS);
+  }
+
+  private async redeployFromHealthCheck(instanceId: string): Promise<void> {
+    const logger = this.getLog();
+    logger.warn(`Instance ${instanceId} unhealthy, triggering redeploy`);
+    this.clearHealthCheckInterval();
+
+    try {
+      await this.deployToSandbox();
+      logger.info('Instance redeployed successfully after health check failure');
+    } catch (redeployError) {
+      logger.error('Failed to redeploy after health check failure:', redeployError);
+    }
   }
 
   private clearHealthCheckInterval(): void {
@@ -336,6 +353,8 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
 
     // Increment generation to invalidate any stale retry loops
     this.deploymentGeneration++;
+    const activeGeneration = this.deploymentGeneration;
+    const deploymentCycleId = generateId();
 
     logger.info('Deploying to sandbox', {
       files: files.length,
@@ -343,6 +362,7 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
       commitMessage,
       sessionId: this.getSessionId(),
       generation: this.deploymentGeneration,
+      deploymentCycleId,
     });
 
     // Create deployment promise
@@ -352,16 +372,25 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
       commitMessage,
       clearLogs,
       callbacks,
+      deploymentCycleId,
     );
 
+    let masterTimedOut = false;
     try {
       // Master timeout: 5 minutes total
-      // This doesn't break the underlying operation - it just stops waiting
+      // If timeout is reached, supersede this loop so stale retries can exit.
       const result = await this.withTimeout(
         this.currentDeploymentPromise,
         MASTER_DEPLOYMENT_TIMEOUT_MS,
         'Deployment failed after 5 minutes of retries',
-        // No onTimeout callback - don't break the operation
+        () => {
+          masterTimedOut = true;
+          this.deploymentGeneration++;
+          logger.error('Master deployment timeout reached, superseding in-flight deployment loop', {
+            timedOutGeneration: activeGeneration,
+            supersededGeneration: this.deploymentGeneration,
+          });
+        },
       );
       return result;
     } catch (error) {
@@ -372,6 +401,13 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
       } else {
         // Master timeout reached - all retries exhausted
         logger.error('Deployment permanently failed after master timeout:', error);
+        if (masterTimedOut) {
+          callbacks?.onError?.({
+            error: 'Deployment failed after 5 minutes of retries',
+            terminal: true,
+            deploymentCycleId,
+          });
+        }
       }
       return null;
     } finally {
@@ -392,6 +428,7 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
     commitMessage: string | undefined,
     clearLogs: boolean,
     callbacks?: SandboxDeploymentCallbacks,
+    deploymentCycleId?: string,
   ): Promise<PreviewType | null> {
     const logger = this.getLog();
     let attempt = 0;
@@ -447,10 +484,15 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
       logger.info(`Deployment attempt ${attemptNumber}`, { sessionId: this.getSessionId() });
 
       try {
-        callbacks?.onStarted?.({
-          message: 'Deploying code to sandbox service',
-          files: files.map((f) => ({ filePath: f.filePath })),
-        });
+        // Signal start only once per deployment cycle. Retries are internal unless terminally failed.
+        if (attemptNumber === 1) {
+          callbacks?.onStarted?.({
+            message: 'Deploying code to sandbox service',
+            files: files.map((f) => ({ filePath: f.filePath })),
+            attempt: attemptNumber,
+            deploymentCycleId,
+          });
+        }
 
         // Core deployment with per-attempt timeout
         deployPromise = this.deploy({
@@ -548,10 +590,6 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
           sandboxInstanceId: undefined,
         });
 
-        callbacks?.onError?.({
-          error: `Deployment attempt ${attemptNumber} failed: ${errorMsg}`,
-        });
-
         // Exponential backoff before retry (capped at 30 seconds)
         const backoffMs = Math.min(1000 * Math.pow(2, Math.min(attemptNumber - 1, 5)), 30000);
         logger.info(`Retrying deployment in ${backoffMs}ms...`);
@@ -586,6 +624,8 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
         instanceId: preview.runId,
         previewURL: preview.previewURL ?? '',
         tunnelURL: preview.tunnelURL ?? '',
+        attempt: attemptNumber,
+        deploymentCycleId,
       });
 
       logger.info('Deployment succeeded', { attempt: attemptNumber, sessionId: this.getSessionId() });
@@ -660,14 +700,30 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
     // Check existing instance
     if (sandboxInstanceId) {
       const status = await client.getInstanceStatus(sandboxInstanceId);
-      if (status.success && status.isHealthy) {
-        logger.info(`DEPLOYMENT CHECK PASSED: Instance ${sandboxInstanceId} is running`);
-        return {
-          sandboxInstanceId,
-          previewURL: status.previewURL,
-          tunnelURL: status.tunnelURL,
-          redeployed: false,
-        };
+      if (status.success && (status.isHealthy || status.pending)) {
+        let previewURL = status.previewURL;
+        let tunnelURL = status.tunnelURL;
+
+        if (!previewURL && status.pending) {
+          const resolvedStatus = await this.waitForInstancePreview(sandboxInstanceId);
+          if (resolvedStatus?.previewURL) {
+            previewURL = resolvedStatus.previewURL;
+            tunnelURL = resolvedStatus.tunnelURL;
+          }
+        }
+
+        if (previewURL) {
+          logger.info(`DEPLOYMENT CHECK PASSED: Instance ${sandboxInstanceId} is running`);
+          return {
+            sandboxInstanceId,
+            previewURL,
+            tunnelURL,
+            redeployed: false,
+          };
+        }
+
+        logger.warn(`DEPLOYMENT CHECK INCOMPLETE: Instance ${sandboxInstanceId} has no preview URL, recreating`);
+        await this.shutdownStaleInstance(sandboxInstanceId);
       }
       logger.error(`DEPLOYMENT CHECK FAILED: Failed to get status for instance ${sandboxInstanceId}, redeploying...`);
     }
@@ -741,7 +797,116 @@ export class DeploymentManager extends BaseAgentService<BaseProjectState> implem
       return createResponse;
     }
 
-    throw new Error(`Failed to create sandbox instance: ${createResponse?.error || 'Unknown error'}`);
+    const resolvedStatus = await this.waitForInstancePreview(createResponse.runId);
+    if (resolvedStatus?.previewURL) {
+      return {
+        ...createResponse,
+        previewURL: resolvedStatus.previewURL,
+        tunnelURL: resolvedStatus.tunnelURL,
+        processId: resolvedStatus.processId,
+        message: resolvedStatus.message ?? createResponse.message,
+      };
+    }
+
+    const reason = !resolvedStatus
+      ? 'preview_url_wait_timed_out'
+      : !resolvedStatus.success
+        ? 'instance_status_lookup_failed'
+        : resolvedStatus.pending
+          ? 'preview_url_still_pending'
+          : !resolvedStatus.isHealthy
+            ? 'instance_unhealthy_before_preview_ready'
+            : 'preview_url_missing';
+
+    throw new AppError(
+      AppErrorType.EXTERNAL_SERVICE_ERROR,
+      `Failed to create sandbox instance: preview URL not available for ${createResponse.runId}`,
+      502,
+      {
+        runId: createResponse.runId,
+        reason,
+        waitForPreviewTimeoutMs: PREVIEW_URL_WAIT_TIMEOUT_MS,
+        status: resolvedStatus
+          ? {
+              pending: resolvedStatus.pending,
+              isHealthy: resolvedStatus.isHealthy,
+              error: resolvedStatus.error,
+            }
+          : undefined,
+      },
+    );
+  }
+
+  private async waitForInstancePreview(instanceId: string): Promise<BootstrapStatusResponse | null> {
+    const logger = this.getLog();
+    const client = this.getClient();
+    const deadline = Date.now() + PREVIEW_URL_WAIT_TIMEOUT_MS;
+    let consecutiveStatusFailures = 0;
+    let lastStatusError: string | undefined;
+
+    while (Date.now() < deadline) {
+      const status = await client.getInstanceStatus(instanceId);
+      if (!status.success) {
+        consecutiveStatusFailures++;
+        lastStatusError = status.error;
+        if (consecutiveStatusFailures === 1 || consecutiveStatusFailures % 5 === 0) {
+          logger.warn('Failed to get instance status while waiting for preview URL; retrying', {
+            instanceId,
+            error: status.error,
+            consecutiveFailures: consecutiveStatusFailures,
+          });
+        }
+        await new Promise((resolve) => setTimeout(resolve, PREVIEW_URL_POLL_INTERVAL_MS));
+        continue;
+      }
+      consecutiveStatusFailures = 0;
+      lastStatusError = undefined;
+
+      if (status.previewURL) {
+        return status;
+      }
+
+      if (!status.pending && !status.isHealthy) {
+        logger.warn('Instance became unhealthy while waiting for preview URL', { instanceId });
+        return status;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, PREVIEW_URL_POLL_INTERVAL_MS));
+    }
+
+    logger.warn('Timed out waiting for preview URL', {
+      instanceId,
+      timeoutMs: PREVIEW_URL_WAIT_TIMEOUT_MS,
+      lastStatusError,
+      consecutiveStatusFailures,
+    });
+    return null;
+  }
+
+  private async shutdownStaleInstance(instanceId: string): Promise<void> {
+    const logger = this.getLog();
+    const client = this.getClient();
+
+    logger.warn(`Shutting down stale sandbox instance ${instanceId} before recreate`);
+    const shutdownResponse = await client.shutdownInstance(instanceId);
+    if (!shutdownResponse.success) {
+      throw new AppError(
+        AppErrorType.EXTERNAL_SERVICE_ERROR,
+        `Failed to shutdown stale sandbox instance ${instanceId}`,
+        502,
+        {
+          instanceId,
+          reason: 'shutdown_stale_instance_failed',
+          shutdownError: shutdownResponse.error || 'Unknown error',
+          shutdownMessage: shutdownResponse.message,
+        },
+      );
+    }
+
+    this.setState({
+      ...this.getState(),
+      sandboxInstanceId: undefined,
+    });
   }
 
   /**

@@ -1428,7 +1428,7 @@ export abstract class BaseCodingBehavior<TState extends BaseProjectState>
             this.logger.error('Failed to execute commands', { response: resp });
             // Check if instance is still running
             const status = await this.getSandboxServiceClient().getInstanceStatus(state.sandboxInstanceId);
-            if (!status.success || !status.isHealthy) {
+            if (!status.success || (!status.isHealthy && !status.pending)) {
               this.logger.error(`Instance ${state.sandboxInstanceId} is no longer running`);
               return;
             }

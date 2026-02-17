@@ -91,6 +91,9 @@ export function useChat({
   const retryTimeouts = useRef<NodeJS.Timeout[]>([]);
   // Track whether component is mounted and should attempt reconnects
   const shouldReconnectRef = useRef(true);
+  // Ensure initial generate_all is sent exactly once for newly created chats,
+  // even if the first websocket attempt fails and retries happen after route change.
+  const hasRequestedInitialGenerationRef = useRef(false);
   // Track deployment timeout for cleanup
   const deploymentTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   // Track the latest connection attempt to avoid handling stale socket events
@@ -348,8 +351,9 @@ export function useChat({
           sendWebSocketMessage(ws, 'get_conversation_state');
 
           // Request file generation for new chats only
-          if (!disableGenerate && urlChatId === 'new') {
+          if (!disableGenerate && !hasRequestedInitialGenerationRef.current) {
             logger.debug('🔄 Starting code generation for new chat');
+            hasRequestedInitialGenerationRef.current = true;
             setIsGenerating(true);
             sendWebSocketMessage(ws, 'generate_all');
           }
@@ -409,7 +413,7 @@ export function useChat({
         handleConnectionFailureRef.current?.(wsUrl, disableGenerate, 'Connection setup failed');
       }
     },
-    [maxRetries, handleWebSocketMessage, urlChatId],
+    [maxRetries, handleWebSocketMessage],
   );
 
   // Handle connection failures with exponential backoff retry
@@ -595,6 +599,7 @@ export function useChat({
 
           // Connect to WebSocket
           logger.debug('connecting to ws with created id');
+          hasRequestedInitialGenerationRef.current = false;
           connectWithRetry(result.websocketUrl);
           setChatId(result.agentId); // This comes from the server response
 

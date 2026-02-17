@@ -173,7 +173,7 @@ export class AppViewController extends BaseController {
    * POST /api/apps/:id/git/token
    */
   static async generateGitCloneToken(
-    _request: Request,
+    request: Request,
     env: Env,
     _ctx: ExecutionContext,
     context: RouteContext,
@@ -203,7 +203,7 @@ export class AppViewController extends BaseController {
         token,
         expiresIn,
         expiresAt: new Date(Date.now() + expiresIn * 1000).toISOString(),
-        cloneUrl: buildGitCloneUrl(env, appId, token),
+        cloneUrl: buildGitCloneUrl(env, appId, token, request),
       };
 
       return AppViewController.createSuccessResponse(responseData);

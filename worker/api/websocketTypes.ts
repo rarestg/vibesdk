@@ -89,11 +89,16 @@ export type DeploymentStartedMessage = {
   type: 'deployment_started';
   message: string;
   files: { filePath: string }[];
+  attempt?: number;
+  deploymentCycleId?: string;
 };
 
 export type DeploymentFailedMessage = {
   type: 'deployment_failed';
   error: string;
+  attempt?: number;
+  terminal: boolean;
+  deploymentCycleId?: string;
 };
 
 export type DeploymentCompletedMessage = {
@@ -102,6 +107,8 @@ export type DeploymentCompletedMessage = {
   tunnelURL: string;
   instanceId: string;
   message: string;
+  attempt?: number;
+  deploymentCycleId?: string;
 };
 
 type PreviewForceRefreshMessage = {
@@ -156,7 +163,9 @@ export type CodeFixEdits = {
 
 type StaticAnalysisResults = {
   type: 'static_analysis_results';
-  staticAnalysis: StaticAnalysisResponse;
+  staticAnalysis?: StaticAnalysisResponse;
+  lint?: StaticAnalysisResponse['lint'];
+  typecheck?: StaticAnalysisResponse['typecheck'];
 };
 
 type PhaseGeneratingMessage = {

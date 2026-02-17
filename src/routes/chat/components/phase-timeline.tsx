@@ -434,23 +434,21 @@ export function PhaseTimeline({
       <AnimatePresence>
         {showCollapsedBar && (
           <motion.div
+            style={{ transformOrigin: '50% 0%' }}
             initial={{
               opacity: 0,
               y: -24,
               scaleY: 0.6,
-              transformOrigin: 'top center',
             }}
             animate={{
               opacity: 1,
               y: 0,
               scaleY: 1,
-              transformOrigin: 'top center',
             }}
             exit={{
               opacity: 0,
               y: -16,
               scaleY: 0.8,
-              transformOrigin: 'top center',
             }}
             transition={{
               duration: 0.4,
@@ -463,21 +461,19 @@ export function PhaseTimeline({
           >
             {/* Subtle frosted glass background area */}
             <motion.div
+              style={{ transformOrigin: '50% 0%' }}
               className="absolute inset-0 backdrop-blur-sm rounded-2xl bg-gradient-to-b from-white/[0.02] via-white/[0.01] to-transparent dark:from-black/[0.02] dark:via-black/[0.01] dark:to-transparent"
               initial={{
                 opacity: 0,
                 scaleY: 0.8,
-                transformOrigin: 'top',
               }}
               animate={{
                 opacity: 1,
                 scaleY: 1,
-                transformOrigin: 'top',
               }}
               exit={{
                 opacity: 0,
                 scaleY: 0.9,
-                transformOrigin: 'top',
               }}
               transition={{
                 ...commonTransitions.premium,
@@ -637,10 +633,10 @@ export function PhaseTimeline({
 
       <motion.div
         layout="position"
+        style={{ transformOrigin: '50% 0%' }}
         animate={{
           scale: showCollapsedBar ? 0.97 : 1,
           opacity: showCollapsedBar ? 0.85 : 1,
-          transformOrigin: 'top center',
         }}
         transition={{
           duration: 0.4,

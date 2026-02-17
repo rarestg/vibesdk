@@ -155,6 +155,12 @@ export const MonacoEditor = memo<MonacoEditorProps>(function MonacoEditor({
       tsDefaults.setDiagnosticsOptions({
         noSemanticValidation: false,
         noSyntaxValidation: false,
+        noSuggestionDiagnostics: false,
+      });
+      jsDefaults.setDiagnosticsOptions({
+        noSemanticValidation: false,
+        noSyntaxValidation: false,
+        noSuggestionDiagnostics: false,
       });
       tsDefaults.setCompilerOptions({
         jsx: monaco.languages.typescript.JsxEmit.React,
@@ -183,6 +189,12 @@ export const MonacoEditor = memo<MonacoEditorProps>(function MonacoEditor({
       tsDefaults.setDiagnosticsOptions({
         noSemanticValidation: true,
         noSyntaxValidation: true,
+        noSuggestionDiagnostics: true,
+      });
+      jsDefaults.setDiagnosticsOptions({
+        noSemanticValidation: true,
+        noSyntaxValidation: true,
+        noSuggestionDiagnostics: true,
       });
       tsDefaults.setCompilerOptions({
         jsx: monaco.languages.typescript.JsxEmit.React,
