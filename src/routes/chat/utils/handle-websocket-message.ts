@@ -46,6 +46,7 @@ const isPhasicState = (state: AgentState): state is PhasicState => {
 };
 
 const PREVIEW_DEPLOY_REQUEST_TIMEOUT_MS = 30000;
+const PREVIEW_DEPLOY_ACTIVE_TIMEOUT_MS = 300000;
 
 export interface HandleMessageDeps {
   // State setters
@@ -117,6 +118,7 @@ export interface HandleMessageDeps {
   onVaultUnlockRequired?: (reason: string) => void;
   previewDeployInFlightRef: React.MutableRefObject<boolean>;
   previewDeployRequestStartedAtRef: React.MutableRefObject<number | null>;
+  previewDeployLifecycleStartedAtRef: React.MutableRefObject<number | null>;
 }
 
 export function createWebSocketMessageHandler(deps: HandleMessageDeps) {
@@ -180,18 +182,37 @@ export function createWebSocketMessageHandler(deps: HandleMessageDeps) {
       clearDeploymentTimeout,
       previewDeployInFlightRef,
       previewDeployRequestStartedAtRef,
+      previewDeployLifecycleStartedAtRef,
     } = deps;
 
     const resetStalePreviewDeployGuard = (context: string) => {
-      if (!previewDeployInFlightRef.current || previewDeployRequestStartedAtRef.current === null) {
+      if (!previewDeployInFlightRef.current) {
         return;
       }
 
-      const ageMs = Date.now() - previewDeployRequestStartedAtRef.current;
-      if (ageMs > PREVIEW_DEPLOY_REQUEST_TIMEOUT_MS) {
-        logger.warn('Resetting stale preview deploy guard', { context, ageMs });
+      const lifecycleStartedAt = previewDeployLifecycleStartedAtRef.current;
+      if (lifecycleStartedAt !== null) {
+        const activeAgeMs = Date.now() - lifecycleStartedAt;
+        if (activeAgeMs > PREVIEW_DEPLOY_ACTIVE_TIMEOUT_MS) {
+          logger.warn('Resetting stale active preview deploy guard', { context, activeAgeMs });
+          previewDeployInFlightRef.current = false;
+          previewDeployRequestStartedAtRef.current = null;
+          previewDeployLifecycleStartedAtRef.current = null;
+          setIsPreviewDeploying(false);
+        }
+        return;
+      }
+
+      if (previewDeployRequestStartedAtRef.current === null) {
+        return;
+      }
+
+      const requestAgeMs = Date.now() - previewDeployRequestStartedAtRef.current;
+      if (requestAgeMs > PREVIEW_DEPLOY_REQUEST_TIMEOUT_MS) {
+        logger.warn('Resetting stale preview deploy request guard', { context, requestAgeMs });
         previewDeployInFlightRef.current = false;
         previewDeployRequestStartedAtRef.current = null;
+        previewDeployLifecycleStartedAtRef.current = null;
         setIsPreviewDeploying(false);
       }
     };
@@ -345,6 +366,7 @@ export function createWebSocketMessageHandler(deps: HandleMessageDeps) {
               if (didSend) {
                 previewDeployInFlightRef.current = true;
                 previewDeployRequestStartedAtRef.current = Date.now();
+                previewDeployLifecycleStartedAtRef.current = null;
               }
             }
           }
@@ -422,6 +444,7 @@ export function createWebSocketMessageHandler(deps: HandleMessageDeps) {
                 if (didSend) {
                   previewDeployInFlightRef.current = true;
                   previewDeployRequestStartedAtRef.current = Date.now();
+                  previewDeployLifecycleStartedAtRef.current = null;
                 }
               }
             }
@@ -645,6 +668,7 @@ export function createWebSocketMessageHandler(deps: HandleMessageDeps) {
         // Keep deploy guard/UI intact if preview deployment is still in flight.
         if (!previewDeployInFlightRef.current) {
           previewDeployRequestStartedAtRef.current = null;
+          previewDeployLifecycleStartedAtRef.current = null;
           setIsPreviewDeploying(false);
         }
         setIsPhaseProgressActive(false);
@@ -656,6 +680,7 @@ export function createWebSocketMessageHandler(deps: HandleMessageDeps) {
       case 'deployment_started': {
         previewDeployInFlightRef.current = true;
         previewDeployRequestStartedAtRef.current = null;
+        previewDeployLifecycleStartedAtRef.current = Date.now();
         setIsPreviewDeploying(true);
         break;
       }
@@ -663,6 +688,7 @@ export function createWebSocketMessageHandler(deps: HandleMessageDeps) {
       case 'deployment_completed': {
         previewDeployInFlightRef.current = false;
         previewDeployRequestStartedAtRef.current = null;
+        previewDeployLifecycleStartedAtRef.current = null;
         setIsPreviewDeploying(false);
         const finalPreviewURL = getPreviewUrl(message.previewURL, message.tunnelURL);
         setPreviewUrl(finalPreviewURL);
@@ -677,12 +703,16 @@ export function createWebSocketMessageHandler(deps: HandleMessageDeps) {
           logger.warn('Ignoring retryable deployment failure event', message);
           previewDeployInFlightRef.current = true;
           previewDeployRequestStartedAtRef.current = null;
+          if (previewDeployLifecycleStartedAtRef.current === null) {
+            previewDeployLifecycleStartedAtRef.current = Date.now();
+          }
           setIsPreviewDeploying(true);
           break;
         }
 
         previewDeployInFlightRef.current = false;
         previewDeployRequestStartedAtRef.current = null;
+        previewDeployLifecycleStartedAtRef.current = null;
         setIsPreviewDeploying(false);
         toast.error(message.error);
         break;

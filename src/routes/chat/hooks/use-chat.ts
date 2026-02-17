@@ -145,6 +145,7 @@ export function useChat({
   const [isPreviewDeploying, setIsPreviewDeploying] = useState(false);
   const previewDeployInFlightRef = useRef(false);
   const previewDeployRequestStartedAtRef = useRef<number | null>(null);
+  const previewDeployLifecycleStartedAtRef = useRef<number | null>(null);
 
   // Redeployment state - tracks when redeploy button should be enabled
   const [isRedeployReady, setIsRedeployReady] = useState(false);
@@ -256,6 +257,7 @@ export function useChat({
         clearDeploymentTimeout,
         previewDeployInFlightRef,
         previewDeployRequestStartedAtRef,
+        previewDeployLifecycleStartedAtRef,
         onPresentationFileEvent: (evt) => {
           if (!evt.path.includes('/slides/')) return;
           window.dispatchEvent(new CustomEvent('presentation-file-event', { detail: evt }));
