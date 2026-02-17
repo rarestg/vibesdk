@@ -161,7 +161,7 @@ export type CodeFixEdits = {
   replacement: string;
 };
 
-type StaticAnalysisResults = {
+export type StaticAnalysisResults = {
   type: 'static_analysis_results';
   staticAnalysis?: StaticAnalysisResponse;
   lint?: StaticAnalysisResponse['lint'];

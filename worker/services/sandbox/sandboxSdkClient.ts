@@ -842,7 +842,7 @@ export class SandboxSdkClient extends BaseSandboxService {
     },
   ): Promise<{ url: string; processId: string }> {
     const waitForUrl = options?.waitForUrl ?? true;
-    const urlTimeoutMs = options?.urlTimeoutMs ?? 20000;
+    const urlTimeoutMs = options?.urlTimeoutMs ?? (waitForUrl ? 20000 : TUNNEL_URL_PENDING_TIMEOUT_MS);
     try {
       const session = await this.getOrCreateSession(`${instanceId}-tunnel`, `/workspace/${instanceId}`);
       const process = await session.startProcess(`cloudflared tunnel --url http://localhost:${port}`);

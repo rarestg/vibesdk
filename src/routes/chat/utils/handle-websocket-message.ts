@@ -8,6 +8,7 @@ import type {
   BehaviorType,
   ProjectType,
   TemplateDetails,
+  StaticAnalysisResults,
 } from '@/api-types';
 import { deduplicateMessages, isAssistantMessageDuplicate } from './deduplicate-messages';
 import { logger } from '@/utils/logger';
@@ -641,10 +642,11 @@ export function createWebSocketMessageHandler(deps: HandleMessageDeps) {
 
         sendMessage(createAIMessage('generation-complete', 'Code generation has been completed.'));
 
-        // Reset all phase indicators
-        previewDeployInFlightRef.current = false;
-        previewDeployRequestStartedAtRef.current = null;
-        setIsPreviewDeploying(false);
+        // Keep deploy guard/UI intact if preview deployment is still in flight.
+        if (!previewDeployInFlightRef.current) {
+          previewDeployRequestStartedAtRef.current = null;
+          setIsPreviewDeploying(false);
+        }
         setIsPhaseProgressActive(false);
         setIsThinking(false);
         setIsGenerating(false);
@@ -706,18 +708,9 @@ export function createWebSocketMessageHandler(deps: HandleMessageDeps) {
       }
 
       case 'static_analysis_results': {
-        const payload = message as {
-          lint?: { issues?: unknown[] };
-          typecheck?: { issues?: unknown[] };
-          staticAnalysis?: {
-            lint?: { issues?: unknown[] };
-            typecheck?: { issues?: unknown[] };
-          };
-        };
-
-        const lintIssues = payload.lint?.issues?.length ?? payload.staticAnalysis?.lint?.issues?.length ?? 0;
-        const typecheckIssues =
-          payload.typecheck?.issues?.length ?? payload.staticAnalysis?.typecheck?.issues?.length ?? 0;
+        const payload = message as StaticAnalysisResults;
+        const lintIssues = payload.staticAnalysis?.lint?.issues?.length ?? payload.lint?.issues?.length ?? 0;
+        const typecheckIssues = payload.staticAnalysis?.typecheck?.issues?.length ?? payload.typecheck?.issues?.length ?? 0;
 
         setStaticIssueCount(lintIssues + typecheckIssues);
         break;
